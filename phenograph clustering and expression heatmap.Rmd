@@ -1,0 +1,81 @@
+---
+title: "Untitled"
+output: html_document
+date: "2024-12-19"
+---
+
+```{r}
+library(uwot)
+library(flowCore)
+library(ggplot2)
+library(dplyr)
+library(pheatmap)
+
+set.seed(1234)
+a <- read.FCS("D://without platelet all debarcoded/run again cd34+.fcs")
+b <- a@exprs
+d <- b[,c(1:37,43)]
+umap_coor <- umap(d)
+colnames(umap_coor) <- c('UMAP1','UMAP2')
+sc_cluster <- as.data.frame(b)
+sc_cluster$UMAP1 <- umap_coor[,1]
+sc_cluster$UMAP2 <- umap_coor[,2]
+
+
+setwd("D://without platelet all debarcoded/final/")
+for (i in c(20,25,30,35,40)){
+  cluster_out <- FastPG::fastCluster(as.matrix(sc_cluster[c(1:37,44)]), k = i)
+  sc_cluster$cluster <- cluster_out$communities
+    p <- ggplot(sc_cluster, aes(x = UMAP1, y = UMAP2, color = as.factor(sc_cluster$`cluster_out$communities`)))+
+    geom_point(size = 0.001) +
+    scale_color_manual(values = rainbow(length(unique(sc_cluster$`cluster_out$communities`)))) +
+    theme_minimal() +
+    labs(title = paste0('UMAP based on k = ', i), x = "UMAP 1", y = "UMAP 2")
+    ggsave(paste0('k = ', i , '.png'), plot = p, bg = 'white')
+  flow_frame <- flowFrame(as.matrix(sc_cluster))
+  write.FCS(flow_frame,paste0('stem cell',i, '.fcs'))
+}
+
+cluster_out <- FastPG::fastCluster(as.matrix(sc_cluster[c(1:37,43)]), k = 36)
+sc_cluster$cluster <- cluster_out$communities
+flow_frame <- flowFrame(as.matrix(sc_cluster))
+write.FCS(flow_frame,'checkk=36.fcs')
+
+
+
+cluster_out <- FastPG::fastCluster(as.matrix(sc_cluster[c(1:37,44)]), k = 35)
+sc_cluster$`cluster_out$communities` <- cluster_out$communities
+
+channel <- colnames(sc_cluster[c(1:37,43)])
+cluster_num <- sort(unique(cluster_out$communities)) 
+expr_matrix <- matrix(0,nrow = length(channel), ncol = length(cluster_num), dimnames = list(channel, cluster_num))
+
+number <- 1
+
+for (i in 0:31){
+  cluster <- sc_cluster %>% 
+    filter(cluster == i)
+  for (j in colnames(cluster[c(1:37,43)])){
+    sub_channel <- cluster[[j]]
+    med <- median(sub_channel)
+    expr_matrix[number ,i + 1] <- med
+    number <- number + 1
+    if (number > 38){
+      number <- 1
+    }
+  }
+}
+
+pheatmap(
+  scale(expr_matrix),
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  main = "channel expression heatmap",
+  filename = "expression_plot_scaled.png" 
+)
+
+flow_frame <- flowFrame(as.matrix(sc_cluster))
+write.FCS(flow_frame,'stem cell 36.fcs')
+write.csv(expr_matrix,"C:/Users/Yifei Wang/Desktop/heatmap k =36 sep.csv",row.names=T)
+```
+

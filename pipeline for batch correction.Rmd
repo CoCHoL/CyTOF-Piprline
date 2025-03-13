@@ -1,0 +1,417 @@
+---
+title: "Batch correction script"
+output: html_document
+date: "2024-11-13"
+---
+
+```{r}
+#here just to change the name DON'T RUN TOO MANY TIMES.
+for (i in 26:31){
+  file_path <- paste0('D://without platelet right order/live_SC_Processed_', i, '/debarcode final')
+  files <- list.files(file_path)
+  new_names <- paste0('Batch', i, '_', files)
+  file.rename(file.path(file_path, files), file.path(file_path, new_names))
+}
+file_path <- 'D://without platelet all debarcoded/'
+for (i in 26:31){
+  direct <-  paste0('D://without platelet right order/live_SC_Processed_', i, '/debarcode final')
+  files <- list.files(direct)
+  setwd(direct)
+  file.copy(from = files, to = file_path)
+}
+
+files <- list.files(file_path)
+setwd((file_path))
+write.csv(files, file = "md for batch correction.csv")
+
+
+BC_names <- NULL
+for (i in 26:31){
+  fcs_name_BC5 <- paste0('Batch', i , '_cluster34_195,198,89Y.fcs')
+  fcs_name_BC6 <- paste0('Batch', i , '_cluster35_196,198,89Y.fcs')
+  BC_names <- c(BC_names, fcs_name_BC5, fcs_name_BC6)
+}
+dir.create(paste0(file_path,'BC_files'))
+setwd('D://without platelet all debarcoded/')
+file.copy(from = BC_names, to = 'D://without platelet all debarcoded/BC_files')
+
+```
+
+
+
+```{r}
+#If you have run the first step too many times, here is the solution
+for (i in 1:9){
+  file_path <- paste0('D://without platelet right order/live_SC_Processed_', i, '/debarcode final')
+  files <- list.files(file_path)
+  new_names <-  str_sub(files, start = 8)
+  file.rename(file.path(file_path, files), file.path(file_path, new_names))
+}
+
+for (i in c(10:12, 14:31)){
+  file_path <- paste0('D://without platelet right order/live_SC_Processed_', i, '/debarcode final')
+  files <- list.files(file_path)
+  new_names <-  str_sub(files, start = 9)
+  file.rename(file.path(file_path, files), file.path(file_path, new_names))
+}
+```
+
+
+
+
+
+
+```{r}
+#BM and BC file creation
+library(cyCombine)
+library(tidyverse)
+library(readxl)
+data_dir <- "D://without platelet all debarcoded/"
+panel_file <- file.path(data_dir, "panel_for_batch_correction.xlsx")
+metadata_file <- file.path(data_dir, "batch_correction_file.xlsx")
+META <- read_xlsx(metadata_file)
+META <- META[1:1039,]
+META_BM <- META %>%
+  filter(str_detect(condition, "bm_"))
+BM_name <- META_BM$Filename
+dir.create(paste0(file_path,'BM_file'))
+setwd(data_dir)
+file.copy(from = BM_name, to = "D://without platelet all debarcoded/BM_file")
+
+dir.create("D://without platelet all debarcoded/BM_and_BC")
+setwd("D://without platelet all debarcoded/BM_file")
+file.copy(BM_name, "D://without platelet all debarcoded/BM_and_BC")
+setwd("D://without platelet all debarcoded/BC_files")
+file.copy(BC_names, "D://without platelet all debarcoded/BM_and_BC")
+
+```
+
+
+
+
+```{r}
+#batch effect detection
+library(cyCombine)
+library(tidyverse)
+library(readxl)
+library(beepr)
+data_dir <- "D://without platelet all debarcoded/"
+
+markers <- read_xlsx(panel_file) %>% 
+  filter(Type != "none") %>% 
+  pull(Antigen)
+
+uncorrected <- prepare_data(
+  data_dir = data_dir,
+  metadata = metadata_file, 
+  filename_col = "Filename",
+  batch_ids = "batch",
+  condition = "condition",
+  down_sample = FALSE,
+  markers = markers,
+  derand = TRUE,
+  transform = FALSE
+)
+uncorrected <- uncorrected[,c(-2,-3,-52,-51)]
+uncorrected <- transform_asinh(uncorrected, markers = markers,cofactor = 5)
+detect_batch_effect_express(uncorrected, out_dir = data_dir)
+detect_batch_effect(uncorrected,out_dir = "D://without platelet all debarcoded/BC_files/", markers = markers)
+```
+
+
+
+
+```{r}
+#Batch correction
+corrected <- uncorrected %>%
+  batch_correct(covar = "condition",
+                xdim = 8,
+                ydim = 8,
+                norm_method = 'scale',
+                markers = markers)
+
+plot_density(uncorrected, corrected, ncol = 4, directory = "D://without platelet all debarcoded/BM_and_BC/", filename = "comparasion.png")
+```
+
+
+```{r}
+#access of batch correction
+labels <- corrected %>%
+          cyCombine::create_som(rlen = 10,
+                                xdim = 8,
+                                ydim = 8,
+                                markers = markers)
+corrected_new <- corrected %>%
+  dplyr::mutate(som = labels)
+
+# Set column for evaluation of EMD (per-cluster)
+celltype_col <- "som"
+
+# Transfer labels to uncorrected data
+uncorrected_new <- corrected_new %>%
+  dplyr::select(id, all_of(celltype_col)) %>%
+  dplyr::left_join(uncorrected, by = "id")
+
+emd_val <- uncorrected_new %>%
+      cyCombine::evaluate_emd(corrected_new,
+                              binSize = 0.1,
+                              markers = markers,
+                              cell_col = celltype_col)
+cowplot::plot_grid(emd_val$violin, emd_val$scatterplot)
+
+
+detect_batch_effect(corrected,out_dir = "D://without platelet all debarcoded/", markers = markers)
+
+batch_correction_df_name <- as.data.frame(summary(corrected$condition))
+
+for (i in rownames(batch_correction_df_name)){
+  name <- i
+  INT <- corrected[which(corrected$condition == i),]
+  assign(name, get('INT'))
+}
+
+dir.create(paste0(file_path,'UMAP'))
+setwd("D://without platelet all debarcoded/UMAP")
+
+for (i in rownames(batch_correction_df_name)){
+  RT <- plot_dimred(
+    get(i),
+    paste0(i,'_UMAP'),
+    type = "umap",
+    plot = "batch",
+    markers = markers,
+    seed = 1234,
+    return_coord = FALSE)
+  ggsave(paste0(i, '_UMAP.png'), plot = RT)
+}
+
+
+for (i in c(1:12,14:31)){
+  name <- paste0('Batch',i)
+  INT <- corrected[which(corrected$batch == i),]
+  assign(name, get('INT'))
+}
+
+setwd("D://without platelet all debarcoded/UMAP")
+set.seed(1234)
+for (i in c(1:12,14:31)){
+  RT <- plot_dimred(
+    get(paste0('Batch', i)),
+    paste0('Batch', i,'_UMAP'),
+    type = "umap",
+    plot = "batch",
+    markers = markers,
+    seed = 1234,
+    return_coord = T)
+  ggsave(paste0(i, '_UMAP.png'), plot = RT$plot)
+  assign(paste0('Batch',i), cbind(get(paste0('Batch', i)), RT$dimred))
+}
+
+
+batch_number <-  length(unique(as.numeric(corrected$batch)))
+batch_id <- c(1:12, 14:31)
+emd_matrix <- matrix(0, nrow = batch_number, ncol = batch_number, dimnames = list(batch_id, batch_id))
+
+library(transport)
+for (i in c(1:12,14:31)){
+  for (j in c(1:12,14:31)){
+
+    if (i != j){
+      batch_name_1 <- paste0('Batch',i)
+      batch_name_2 <- paste0('Batch',j)
+      batch_UMAP_1 <- c(get(batch_name_1)[,44],get(batch_name_1)[,45])
+      batch_UMAP_2 <- c(get(batch_name_2)[,44],get(batch_name_2)[,45])
+      emd_result <- wasserstein1d(batch_UMAP_1, batch_UMAP_2)
+      if (i >12) {
+        a <- i - 1
+      } else{
+        a <- i
+      }
+       if (j >12) {
+        b <- j - 1
+      } else{
+        b <- j
+      }
+      emd_matrix[a, b] <- emd_result
+      emd_matrix[b, a] <- emd_matrix[a, b] 
+    }
+  }
+}
+
+
+library(pheatmap)
+pheatmap(
+  emd_matrix,
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  main = "Batch-to-Batch EMD Heatmap"
+)    
+    
+
+corrected_RT <- cbind(corrected, RT$dimred)
+
+
+
+
+```
+
+```{r}
+
+#EMD heat map plotting 
+library(beepr)
+
+batch_number <-  length(unique(as.numeric(corrected$batch)))
+batch_id <- c(1:12, 14:31)
+batch_name_bm <-paste0('bm', batch_id)
+batch_name_pbmcs <- paste0('pbmcs', batch_id)
+batch_name_dim <- c(batch_name_bm, batch_name_pbmcs)
+emd_matrix <- matrix(0, nrow = batch_number +30 , ncol = batch_number + 30, dimnames = list(batch_name_dim, batch_name_dim))
+options(warn =-1)
+
+library(transport)
+for (i in c(1:12,14:31)){
+  a <- corrected_RT[which(corrected_RT$batch == i),]
+  subset_bm <- a[startsWith(as.character(tolower(a$condition)), 'bm'), ]
+  subset_pbmcs <- a[startsWith(as.character(tolower(a$condition)), 'pbmcs'), ]
+  subset_bm_UMAP <- c(subset_bm[,44],subset_bm[,45])
+  subset_pbmcs_UMAP <- c(subset_pbmcs[,44],subset_pbmcs[,45])
+  for (j in c(1:12,14:31)){
+    if (i != j){
+      b <- corrected_RT[which(corrected_RT$batch == j),] 
+      subset_bm_1 <- b[startsWith(as.character(tolower(b$condition)), 'bm'), ]
+      subset_pbmcs_1 <- b[startsWith(as.character(tolower(b$condition)), 'pbmcs'), ]
+      subset_bm_UMAP_1 <- c(subset_bm_1[,44],subset_bm_1[,45])
+      subset_pbmcs_UMAP_1 <- c(subset_pbmcs_1[,44],subset_pbmcs_1[,45])
+      emd_result <- wasserstein1d(subset_bm_UMAP, subset_bm_UMAP_1)
+      if (i >12) {
+        d <- i - 1
+      } else{
+        d <- i
+      }
+       if (j >12) {
+        e <- j - 1
+      } else{
+        e <- j
+      }
+      emd_matrix[d, e] <- emd_result
+      emd_matrix[e, d] <- emd_matrix[d, e]
+      emd_result <- wasserstein1d(subset_pbmcs_UMAP, subset_pbmcs_UMAP_1)
+      emd_matrix[d + 30, e + 30] <- emd_result
+      emd_matrix[e + 30, d + 30] <- emd_matrix[d + 30, e + 30]
+    }
+  }
+}
+
+
+for (i in c(1:12,14:31)){
+  a <- corrected_RT[which(corrected_RT$batch == i),]
+  subset_bm <- a[startsWith(as.character(tolower(a$condition)), 'bm'), ]
+  subset_bm_UMAP <- c(subset_bm[,44],subset_bm[,45])
+  for (j in c(1:12,14:31)){
+    if (i != j){
+      b <- corrected_RT[which(corrected_RT$batch == j),] 
+      subset_pbmcs_1 <- b[startsWith(as.character(tolower(b$condition)), 'pbmcs'), ]
+      subset_pbmcs_UMAP_1 <- c(subset_pbmcs_1[,44],subset_pbmcs_1[,45])
+      emd_result <- wasserstein1d(subset_bm_UMAP, subset_pbmcs_UMAP_1)
+      if (i >12) {
+        d <- i - 1
+      } else{
+        d <- i
+      }
+       if (j >12) {
+        e <- j - 1
+      } else{
+        e <- j
+      }
+  emd_matrix[d, e + 30] <- emd_result
+  emd_matrix[d+ 30, e] <- emd_result
+    } else {
+      subset_pbmcs <- a[startsWith(as.character(tolower(a$condition)), 'pbmcs'), ]
+      subset_pbmcs_UMAP <- c(subset_pbmcs[,44],subset_pbmcs[,45])
+      emd_result <- wasserstein1d(subset_bm_UMAP, subset_pbmcs_UMAP)
+      if (i >12) {
+        d <- i - 1
+      } else{
+        d <- i
+      }
+       if (j >12) {
+        e <- j - 1
+      } else{
+        e <- j
+      }
+      emd_matrix[d, e + 30] <- emd_result
+      emd_matrix[d+ 30, e] <- emd_result
+    }
+  }
+}
+
+beep(8)
+
+library(pheatmap)
+pheatmap(
+  emd_matrix,
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  main = "Batch-to-Batch EMD Heatmap",
+  filename = "EMD_plot.png" 
+)
+```
+
+
+```{r}
+setwd("D://without platelet all debarcoded/BC_files/")
+uncorrected_BC <- prepare_data(
+  data_dir = "D://without platelet all debarcoded/BC_files/",
+  metadata = metadata_file, 
+  filename_col = "Filename",
+  batch_ids = "batch",
+  condition = "condition",
+  down_sample = FALSE,
+  markers = markers,
+  derand = TRUE,
+  transform = FALSE,
+)
+uncorrected_BC <- uncorrected_BC[,c(-2,-3,-52,-51)]
+uncorrected_BC <- transform_asinh(uncorrected_BC, markers = markers,cofactor = 5)
+
+
+
+detect_batch_effect(uncorrected,out_dir = "D://without platelet all debarcoded/BC_files/", markers = markers)
+
+
+
+detect_batch_effect_express(uncorrected_BC, downsample = NULL, out_dir = "D://without platelet all debarcoded/BC_files/")
+
+
+RT <- plot_dimred(
+    corrected,
+    'BC_UMAP.png',
+    type = "umap",
+    plot = "batch",
+    markers = markers,
+    seed = 1234,
+    return_coord = TRUE
+)
+
+RT_uncorrected_BC <-cbind(uncorrected_BC,RT$dimred)
+corrected <- uncorrected %>%
+  batch_correct(covar = "condition",
+                xdim = 8,
+                ydim = 8,
+                norm_method = 'scale',
+                markers = markers)
+
+plot_density(uncorrected, corrected, ncol = 4, directory = "D://without platelet all debarcoded/BM_and_BC/", filename = "comparasion.png")
+
+
+
+
+RT_uncorrected_BC_delection <- RT_uncorrected_BC[,c(-40,-42)]
+RT_uncorrected_BC_delection$batch <- as.numeric(RT_uncorrected_BC_delection$batch)
+flow_frame <- flowFrame(as.matrix(RT_uncorrected_BC_delection))
+write.FCS(flow_frame,'fcsfile.fcs')
+
+ggsave("BC_UMAP.png", plot = RT$plot)
+```
+
+

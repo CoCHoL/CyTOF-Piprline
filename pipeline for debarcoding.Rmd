@@ -1,0 +1,351 @@
+---
+title: "R pepline for debarcoding"
+output: html_document
+date: "2024-10-25"
+---
+
+#Preparation for the data input
+
+
+First thing is to load all the packages for the analysis by using these codes:
+```{r}
+library(readxl)             #read the excel file                                   
+library(CATALYST)           #use its clustering function
+library(flowCore)           #basic package for cytometry data
+library(devtools)           #dependency for premessa
+library(scater)             #tool to deal with singlecellexperiment object
+library(premessa)           #package for initial separating
+library(uwot)               #package for UMAP plotting
+library(dbscan)             #clustering function
+library(FlowSOM)            #another clustering function also dependency package
+library(kknn)               #package for kNN machine learning
+library(umap)               #another package for clustering
+library(dplyr)              #used for cleaning up the dataframe
+library(modeest)            #package for calculating the mode
+library(tibble)
+library(openxlsx)
+library(stringr)
+```
+
+
+Then we will carry out the initial debarcoding using premessa package. The reason for using this only as the initial step is when in high yield, there is many cross-contamination between different clusters. To get maximum yield and highest purity, following purification on each cluster is essential.
+```{r}
+#this is for the automatically process
+file_path <- "D://without platelet right order/"
+barcode_key <- read.csv('C://Users/Yifei Wang/Desktop/lab rotation 1/barcode key for bath 3.csv')
+setwd(file_path)
+files <- list.files()
+primary_file <- NULL
+secondary_layer <- NULL
+first_layer <- NULL
+for (i in files){
+  str_new <- str_sub(i, 1, -5)
+  primary_file <- file.path(file_path, str_new)
+  dir.create(primary_file)
+  first_layer <- as.data.frame(rbind(first_layer, primary_file))
+  de_folder <- file.path(primary_file, "Premessa Debarcoded Files")
+  dir.create(de_folder)
+  secondary_layer <- as.data.frame(rbind(secondary_layer, de_folder))
+  debarcode_fcs(fcs = read.FCS(i, truncate_max_range = FALSE), bc.key = read_barcode_key('C://Users/Yifei Wang/Desktop/lab rotation 1/barcode key for bath 3.csv'), output.dir = de_folder, output.basename = str_new, sep.threshold = 0.01, mahal.dist.threshold = 30)
+}
+
+file_path_supporting <- "D://SC_supporting_files/"
+
+for (z in files){
+setwd(paste0(file_path, "/", str_sub(z, 1, -5)))
+md <- read_xlsx(paste0(file_path_supporting, str_sub(z, 1, -5), "_md.xlsx"))
+panel <- read_xlsx("C://Users/Yifei Wang/Desktop/lab rotation 1/panel.xlsx")
+fsc <- read.flowSet(md$file_name, paste0(file_path, "/",str_sub(z, 1, -5), "/Premessa Debarcoded Files"))
+fsc_testing <- read.FCS(paste0(file_path, "/",str_sub(z, 1, -5), "/Premessa Debarcoded Files/", str_sub(z, 1, -5),"_Unassigned.fcs"))
+md_testing <- read_xlsx(paste0(file_path_supporting, str_sub(z, 1, -5), "_md_testing.xlsx"))
+
+all (panel $ fcs_colname %in% colnames (fsc)) 
+md_using <- md[,1:4]
+
+sce <- prepData(fsc, panel, md_using, feature = panel$fcs_colname)
+set.seed(1234)
+
+sce1 <- cluster(sce, features = "none",xdim = 10, ydim = 10, maxK = 35, seed = 1234) 
+sce2 <- runDR(sce1, dr = "UMAP", features = "none")  
+
+reduced_data <- reducedDim(sce2, "UMAP")    
+
+q <- plotDR(sce2 , "UMAP", color_by = 'patient_id') +
+  guides(color = guide_legend(override.aes = list(size = 5)))
+
+
+
+
+#hdbscan clustering based on the selected barcode key channels
+dbscan_res <- dbscan(reduced_data, eps = 0.05, minPts = 10)
+umap_df <- as.data.frame(reduced_data)
+#remane the dataframe with umap coordinates
+colnames(umap_df) <- c("UMAP1", "UMAP2")
+#assign DBSCAN cluster to each cell 
+umap_df$cluster <- as.factor(dbscan_res$cluster)
+umap_df$order <- 1:length(umap_df$cluster)
+cluster_counts_dbscan <- table(umap_df$cluster)
+
+#eliminate the extra clusters in catalyst clustering, since the subset would change the order of the raw data, reordering is needed.
+final <- NULL
+mid <- NULL
+a <- 1
+for (i in as.vector(unique(umap_df$cluster))){
+  if(length(umap_df[which(umap_df$cluster == i),3]) > 100){
+    mid <- subset(umap_df, umap_df$cluster == i)
+    mid$cluster <- a 
+    a <- a + 1
+    final <- rbind(final, mid)
+  }
+  else {
+    mid <- subset(umap_df, umap_df$cluster == i)
+    mid$cluster <- "noise"
+    final <- rbind(final, mid)
+    
+  }
+}
+table(final$cluster)
+final <- final[order(final$order), ]
+sce2$cluster <- final$cluster
+sce2 <- sce2[,sce2$cluster != "noise" ]
+sce2$cluster <-  NULL
+final <- final[which(final$cluster != "noise"),]
+final$sample_channel <- as.vector(sce2@colData@listData[["patient_id"]])
+colnames(final) <- c("UMAP1", "UMAP2", "cluster", 'order', 'sample_channel')
+
+centers <- final %>%
+    group_by(sample_channel) %>%
+    summarize(UMAP1_center = mean(UMAP1), UMAP2_center = mean(UMAP2), .groups = "drop")
+final <- final %>%
+    left_join(centers, by = "sample_channel")
+final <- final %>%
+    mutate(distance_to_center = sqrt((UMAP1 - UMAP1_center)^2 + (UMAP2 - UMAP2_center)^2))
+distance_thresholds <- final %>%
+    group_by(sample_channel) %>%
+    summarize(distance_threshold = quantile(distance_to_center, 0.95), .groups = "drop")
+final <- final %>%
+    left_join(distance_thresholds, by = "sample_channel")
+cleaned_final <- final %>%
+    filter(distance_to_center <= distance_threshold)
+
+cleaned_final$sample_channel <- as.factor(cleaned_final$sample_channel)
+sce2$cluster <- final$distance_to_center
+sce2 <- sce2[,sce2$cluster <= final$distance_threshold]
+sce2$cluster <- NULL
+
+BF <- length(as.data.frame(table(umap_df$cluster))[,1])
+AF <- length(as.data.frame(table(final$cluster))[,1])
+dif_cluster <- data.frame(BF, AF)
+colnames(dif_cluster) <- c("dbscan cluster number", "number after removal of nosy cluster")
+center_point <- as.data.frame(cbind(unique(cleaned_final$UMAP1_center), unique(cleaned_final$UMAP2_center), unique(cleaned_final$sample_channel)))
+colnames(center_point) <- c("UMAP1", "UMAP2","sample_channel")
+p <- ggplot(cleaned_final, aes(x = UMAP1, y = UMAP2, color = sample_channel)) +
+    geom_point(size = 0.0001) +
+    theme_minimal() +
+    labs(color = "Sample Channel") +
+    scale_color_manual(values = rainbow(length(unique(cleaned_final$sample_channel)))) +
+    guides(color = guide_legend(override.aes = list(size = 5))) +
+    geom_text(data = center_point, aes(x = UMAP1, y = UMAP2, label = sample_channel) ,size = 5, color = "black")
+ggsave('removal of outlier.png', plot = p, bg = 'white')
+
+q <- q + 
+  geom_text(data = center_point, aes(x = UMAP1, y = UMAP2, label = sample_channel) ,size = 5, color = "black")
+
+ggsave("UMAP after CATALYST flowsom clustering.png", plot = q, bg = "white")
+
+clean_number <- NULL
+noise_number <- NULL
+tidy_df <- NULL
+intermediate <- NULL
+for (i in unique(cleaned_final$sample_channel)){
+  intermediate <-  cleaned_final[which(cleaned_final$sample_channel == i ),]
+  mode <- mlv(intermediate$cluster, method = "mfv")
+  intermediate$cluster[which(intermediate$cluster != mode)] <- "noise"
+  clean_number <- cbind(clean_number, length(which(intermediate$cluster != "noise")))
+  noise_number <- cbind(noise_number, length(which(intermediate$cluster == "noise")))
+  tidy_df <- rbind(tidy_df, intermediate)
+}
+
+
+input_number <- NULL
+for (i in as.vector(unique(sce$patient_id))){
+  ve <- length(which(sce$patient_id == i))
+  input_number <- c(input_number , ve)
+}
+original <- as.vector(unique(sce2@colData@listData[["patient_id"]]))
+percentage_noise <- t(noise_number) / input_number * 100
+percentage_noise_table <- data.frame(original, input_number, t(clean_number), t(noise_number), percentage_noise)
+colnames(percentage_noise_table) <- c("sample channel", "overall cell number", "clean cell number", "noise number", "percentage noise")
+
+sce2$cluster <- tidy_df$cluster
+sce2 <- sce2[,sce2$cluster != "noise" ]
+sce2$cluster <-  NULL
+umap_df1 <-  subset(tidy_df , cluster != "noise")
+
+
+a <- 1
+umap_df2 <- NULL
+for (i in as.vector(unique(tidy_df$sample_channel))){
+  intermediate <- umap_df1[which(umap_df1$sample_channel == i ),]
+  intermediate$cluster <- a
+  a <- a + 1
+  umap_df2 <- rbind(umap_df2, intermediate)
+}
+
+
+
+
+p <- ggplot(umap_df2, aes(x = UMAP1, y = UMAP2, color = sample_channel)) +
+geom_point(size = 0.01) +
+scale_color_manual(values = rainbow(length(unique(umap_df2$sample_channel)))) +
+theme_minimal() +
+labs(title = "Clean UMAP with DBSCAN Clustering", x = "UMAP 1", y = "UMAP 2") +
+guides(color = guide_legend(override.aes = list(size = 5))) +
+geom_text(data = center_point, aes(x = UMAP1, y = UMAP2, label = sample_channel) ,size = 5, color = "black")
+
+ggsave("Clean UMAP with DBSCAN Clustering.png", plot = p, bg = "white")
+
+all (panel $ fcs_colname %in% colnames (fsc_testing)) 
+
+#prepare the data for further analysis 
+
+sce_test <- prepData(fsc_testing, panel, md_testing, feature = panel$fcs_colname)
+
+#prepare for UMAP
+
+set.seed(1234)
+sce1_test <- cluster(sce_test, features = "none",xdim = 10, ydim = 10, maxK = 35, seed = 1234)
+sce2_test <- runDR(sce1_test, dr = "UMAP", features = "none")
+reduced_data_test <- reducedDim(sce2_test, "UMAP")    #generate UMAP coordinates
+
+p <- plotDR(sce2_test , "UMAP", color_by = "patient_id")
+ggsave("UMAP after CATALYST flowsom clustering unassigned.png", plot = p, bg = "white")
+
+#hdbscan clustering based on the selected barcode key channels
+
+dbscan_res_test <- dbscan(reduced_data_test, eps = 0.05, minPts = 10)
+umap_df_test <- as.data.frame(reduced_data_test)
+colnames(umap_df_test) <- c("UMAP1", "UMAP2")
+umap_df_test$cluster <- as.factor(dbscan_res_test$cluster)
+cluster_counts_dbscan_test <- table(umap_df_test$cluster)
+
+
+
+
+
+p <- ggplot(umap_df_test, aes(x = UMAP1, y = UMAP2, color = cluster)) +
+geom_point(size = 1) +
+scale_color_manual(values = rainbow(length(unique(umap_df_test$cluster)))) +
+theme_minimal() +
+labs(title = "Unassigned UMAP with DBSCAN Clustering", x = "UMAP 1", y = "UMAP 2")
+
+ggsave("Unassigned UMAP with DBSCAN Clustering.png", plot = p, bg = "white")
+
+
+umap_df_no_cluster <- umap_df2[,c(1,2)]
+umap_df_test_no_cluster <- umap_df_test [,-3]
+
+all_umap <- rbind(umap_df_no_cluster, umap_df_test_no_cluster)
+clusters_original <- as.factor(umap_df2$cluster)
+
+
+k <- 2  # Number of neighbors for k-NN
+kknn_model <- kknn(clusters_original ~ ., 
+                   train = as.data.frame(umap_df_no_cluster), 
+                   test = as.data.frame(umap_df_test_no_cluster), 
+                   k = k)
+
+predicted_clusters <- kknn_model$fitted.values
+distances <- kknn_model$D
+threshold_knn <- 0.01
+assigned_clusters <- ifelse(distances < threshold_knn, predicted_clusters, "unassigned")
+assigned_clusters <- assigned_clusters[,-2]
+final_clusters <- c(clusters_original, assigned_clusters)
+table(assigned_clusters)
+
+rescured_point <- cbind(umap_df_test_no_cluster[which(assigned_clusters != "unassigned"),], assigned_clusters[which(assigned_clusters != "unassigned")])
+colnames(rescured_point) <- c("UMAP1", "UMAP2", "cluster")
+
+p <- ggplot(rescured_point, aes(x = UMAP1, y = UMAP2)) +
+    geom_point(size = 1, color = 'red', alpha = 1) +
+    geom_point(data = umap_df2, aes(x = UMAP1, y = UMAP2), color = 'blue',size = 0.0001, alpha = 0.1) +
+    geom_point(data = umap_df_test, aes(x = UMAP1,y = UMAP2), size = 0.00001, color ='lightgrey', alpha = 0.1) +
+    labs(title = "UMAP with rescured cells and Unassigned Points") +
+    theme_minimal() +
+    guides(color = guide_legend(override.aes = list(size = 5)))
+
+ggsave("UMAP with rescured cells and Unassigned Points.png", plot = p, bg = "white")
+
+final_umap <- data.frame(UMAP1 = all_umap[, 1], UMAP2 = all_umap[, 2], cluster = factor(final_clusters))
+
+
+p <- ggplot(final_umap, aes(x = UMAP1, y = UMAP2, color = cluster)) +
+    geom_point(size = 0.001) +
+    scale_color_manual(values = rainbow(length(unique(final_umap$cluster)))
+    ) +
+    labs(title = "UMAP with all clustered cells and Unassigned cells") +
+    theme_minimal() +
+    guides(color = guide_legend(override.aes = list(size = 5))) +
+    geom_text(data = center_point, aes(x = UMAP1, y = UMAP2, label = sample_channel) ,size = 5, color = "black")
+    
+ggsave("UMAP with all clustered cells and Unassigned cells.png", plot = p, bg = "white")    
+
+#get the clean umap without unassigned points
+
+clean_umap <- final_umap [final_umap$cluster != "unassigned", ]
+
+
+p <- ggplot(clean_umap, aes(x = UMAP1, y = UMAP2, color = cluster)) +
+    geom_point(size = 0.001) +
+    scale_color_manual(values = rainbow(length(unique(clean_umap$cluster)))
+    ) +
+    labs(title = "Clean UMAP without Unassigned cells") +
+    theme_minimal() +
+    guides(color = guide_legend(override.aes = list(size = 5))) +
+    geom_text(data = center_point, aes(x = UMAP1, y = UMAP2, label = sample_channel) ,size = 5, color = "black")
+
+ggsave("Clean UMAP without Unassigned cells.png", plot = p, bg = "white")
+
+
+
+sce_all <- cbind(sce2, sce2_test)
+sce_all$cluster <- final_umap$cluster
+sce_all <- sce_all[,sce_all$cluster != "unassigned" ]
+sce_all1 <- sce2fcs(sce_all, split_by = NULL, keep_cd = T, keep_dr = T, assay = "counts")
+write.FCS(sce_all1, "UMAP for all cluster.fcs")
+
+
+debarcode_file <- file.path(paste0(file_path,"/", str_sub(z, 1, -5), "/debarcode final"))
+dir.create(debarcode_file)
+setwd(debarcode_file)
+printout <-  NULL
+for (i in 1:35) {
+  
+  intermediate <- sce_all1[which(sce_all$cluster == i),]
+  file_name <- paste0('cluster', i, unique(umap_df2[which(umap_df2$cluster == i),]$sample_channel), '.fcs')
+  cells_in_cluster <- which(sce_all$cluster == i)
+  num_cells <- length(cells_in_cluster)
+  cluster_data <- sce_all1[cells_in_cluster, ]
+  write.FCS(cluster_data, file_name)
+  a <- data.frame(file_name, num_cells)
+  printout <- rbind(printout, a)
+}
+  
+setwd(paste0(file_path,"/", str_sub(z, 1, -5)))  
+output_file <- "QC information.xlsx"
+wb <- createWorkbook()
+addWorksheet(wb, "Sheet1")
+writeData(wb, "Sheet1", dif_cluster)
+
+addWorksheet(wb, "Sheet2")
+writeData(wb, "Sheet2", percentage_noise_table)
+
+addWorksheet(wb, "Sheet3")
+writeData(wb, "Sheet3", printout)
+
+saveWorkbook(wb, output_file , overwrite = TRUE)  
+}  
+
+```
+
+
