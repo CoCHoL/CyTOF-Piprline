@@ -1,0 +1,2037 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-01-29"
+---
+
+```{r}
+sc_cluster_new <- sc_cluster
+a <- sc_cluster_new[which(sc_cluster_new$batch >= 13),]
+a$batch <- a$batch + 1
+b <- sc_cluster_new[which(sc_cluster_new$batch < 13),]
+
+correct_batch_number_sc_cluster <- rbind(b,a)
+
+```
+
+```{r}
+library(readxl)
+a <- read_xlsx('D://without platelet all debarcoded/batch_correction_file_with_age_sxe.xlsx')
+
+library(dplyr)
+library(stringr)
+clean_sc <- correct_batch_number_sc_cluster %>%
+  filter(!(batch %in% c(24, 25) & sample == 33))
+
+clean_sc_clean <- clean_sc %>%
+filter(!(batch == 31 & sample %in% c(24:33)))
+
+
+```
+
+
+
+
+
+```{r}
+addon <- NULL
+for (i in c(1:12,14:31)){
+  if (i %in% c(1:12,14:23,26:30)){
+    inter <- a %>%
+      filter(batch == i)
+    sc_data <- clean_sc_clean %>%
+      filter(batch == i)
+    for (j in 1:35) {
+      inter_age <- inter %>%
+        filter(str_detect(Filename, paste0('cluster',j,'_'))) %>%
+        select(condition, Patient_id, AGE, SEX)
+      sc_data_mid <- sc_data %>% 
+        filter(sample == j)
+      sc_data_mid$condition <- inter_age$condition
+      sc_data_mid$Patient_id <- inter_age$Patient_id
+      sc_data_mid$AGE <- inter_age$AGE
+      sc_data_mid$SEX <- inter_age$SEX
+      addon <- rbind(addon, sc_data_mid)
+    }
+  }else if(i %in% c(24,25)){
+        inter <- a %>%
+      filter(batch == i)
+    sc_data <- clean_sc_clean %>%
+      filter(batch == i)
+    for (j in c(1:32,34:35)) {
+      inter_age <- inter %>%
+        filter(str_detect(Filename, paste0('cluster',j,'_'))) %>%
+        select(condition, Patient_id, AGE, SEX)
+      sc_data_mid <- sc_data %>% 
+        filter(sample == j)
+      sc_data_mid$condition <- inter_age$condition
+      sc_data_mid$Patient_id <- inter_age$Patient_id
+      sc_data_mid$AGE <- inter_age$AGE
+      sc_data_mid$SEX <- inter_age$SEX
+      addon <- rbind(addon, sc_data_mid)
+    }
+  }else{
+    inter <- a %>%
+      filter(batch == i)
+    sc_data <- clean_sc_clean %>%
+      filter(batch == i)
+    for (j in c(1:23,34:35)) {
+      inter_age <- inter %>%
+        filter(str_detect(Filename, paste0('cluster',j,'_'))) %>%
+        select(condition, Patient_id, AGE, SEX)
+      sc_data_mid <- sc_data %>% 
+        filter(sample == j)
+      sc_data_mid$condition <- inter_age$condition
+      sc_data_mid$Patient_id <- inter_age$Patient_id
+      sc_data_mid$AGE <- inter_age$AGE
+      sc_data_mid$SEX <- inter_age$SEX
+      addon <- rbind(addon, sc_data_mid)
+    }
+  }
+}
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(readxl)
+library(dplyr)
+a <- read_xlsx("C://Users/Yifei Wang/Desktop/cluster annotation.xlsx")
+with_annotation_final <- NULL
+for (i in 0:31){
+  inter <- with_annotation_new %>%
+    filter(cluster == i)
+  b <- a %>%
+    filter(`Cluster Number` == i) %>%
+    select(Annotation)
+  inter$annotation <- b$Annotation
+  with_annotation_final <- rbind(with_annotation_final, inter)
+}
+```
+
+
+
+
+
+
+```{r}
+without_undefined <- with_annotation_final %>%
+  filter(annotation != "Undefined")
+
+
+bm <- without_undefined %>%
+  filter(str_detect(condition, paste0('bm','_')))
+pbmcs <- without_undefined %>%
+  filter(str_detect(condition, paste0('pbmcs','_')))
+
+
+
+bm$AGE <- as.numeric(bm$AGE)
+unique(bm$AGE)
+bm_new <- na.omit(bm)
+
+
+pbmcs$AGE <- as.numeric(pbmcs$AGE)
+unique(pbmcs$AGE)
+pbmcs_new <- na.omit(pbmcs)
+
+
+```
+
+
+
+
+```{r}
+library(reshape2)
+library(ggplot2)
+library(ggpubr)
+a <- read_xlsx("C://Users/Yifei Wang/Desktop/analysis data/CLP1_comparasion.xlsx")
+b <- melt(a)
+b <- na.omit(b)
+
+colnames(b) <- c('sample','variable', 'value')
+
+b$new <- paste0(b$sample,b$variable)
+
+compare_means(data = b, value ~ new)
+my_comparisons <- list(c('bm80-90','PbmCS50-59'),c('PbmCS60-69','PbmCS70-79'),c('PbmCS60-69','PbmCS80-90'))
+
+ggplot(b,aes(x = new, y = value, fill = sample)) +
+  geom_boxplot(alpha = 0.5) +
+  geom_point(aes(fill = sample)) +
+  xlab("Age Group") +
+  ylab("%CLP1") +
+  theme_bw() +
+  theme(text = element_text(size =9)) +
+  stat_compare_means(comparisons = my_comparisons)
+
+
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+library(readxl)
+library(dplyr)
+
+bm$AGE <- as.numeric(bm$AGE)
+unique(bm$AGE)
+bm_new <- na.omit(bm)
+
+
+pbmcs$AGE <- as.numeric(pbmcs$AGE)
+unique(pbmcs$AGE)
+pbmcs_new <- na.omit(pbmcs)
+
+
+for (va in unique(bm$annotation)){
+
+  e <- NULL
+for (i in unique(bm_new$batch)){
+  a <- bm_new %>%
+    filter(batch == i)
+  for (j in unique(a$sample)){
+  b <- a %>% 
+    filter(sample == j)
+  d <- b %>%
+    filter (annotation == va)
+  total_number <- length(b$annotation)
+  sc_number <- length(d$annotation)
+  prop <- sc_number/total_number *100
+  f <- data.frame(i,j,total_number,sc_number,prop, unique(b$AGE),unique(b$SEX),unique(b$condition))
+  e <- rbind(e,f)
+  }
+}
+colnames(e) <- c('Batch','Sample','Total_number','Cell_number','Prop','Age','Sex','Condition')
+assign(paste('bm',va, sep = "_"),e)
+}
+
+
+for (va in unique(pbmcs$annotation)){
+e <- NULL
+for (i in unique(pbmcs_new$batch)){
+  a <- pbmcs_new %>%
+    filter(batch == i)
+  for (j in unique(a$sample)){
+  b <- a %>% 
+    filter(sample == j)
+  d <- b %>%
+    filter (annotation == va)
+  total_number <- length(b$annotation)
+  sc_number <- length(d$annotation)
+  prop <- sc_number/total_number *100
+  f <- data.frame(i,j,total_number,sc_number,prop,unique(b$AGE),unique(b$SEX),unique(b$condition))
+  e <- rbind(e,f)
+  }
+}
+colnames(e) <- c('Batch','Sample','Total_number','Cell_number','Prop','Age','Sex','Condition')
+assign(paste('PbmCS',va, sep = '_'),e)
+}
+
+all_vars <- ls()
+file_div <- "C://Users/Yifei Wang/Desktop/analysis data/"
+for (i in all_vars) {
+   var_value <- get(i)
+   file_path <- paste0(file_div, i,".csv")
+   write.csv(var_value, file = file_path, row.names = T)
+  
+}
+```
+
+
+```{r}
+#get the age comparasion table
+library(dplyr)
+library(stringr)
+
+file_div <- "C://Users/Yifei Wang/Desktop/analysis data/Raw data/"
+file_save <- "C://Users/Yifei Wang/Desktop/analysis data/age table/"
+all_files <- list.files(path = file_div)
+
+for (i in all_files) {
+  a <- read.csv(paste0(file_div, i))
+  
+fifty <- a %>% filter(between(Age, 50, 59))
+sixty <- a %>% filter(between(Age, 60, 69))
+sevenity <- a %>% filter(between(Age, 70, 79))
+eighty <- a %>% filter(between(Age, 80, 90))
+  
+  prop_fifty <- fifty$Prop
+  prop_sixty <- sixty$Prop
+  prop_sevenity <- sevenity$Prop
+  prop_eighty <- eighty$Prop
+  
+  max_length <- max(length(prop_fifty), length(prop_sixty), length(prop_sevenity), length(prop_eighty))
+  
+  prop_fifty <- c(prop_fifty, rep(NA, max_length - length(prop_fifty)))
+  prop_sixty <- c(prop_sixty, rep(NA, max_length - length(prop_sixty)))
+  prop_sevenity <- c(prop_sevenity, rep(NA, max_length - length(prop_sevenity)))
+  prop_eighty <- c(prop_eighty, rep(NA, max_length - length(prop_eighty)))
+  
+  b <- data.frame(
+    '50-59' = prop_fifty,
+    '60-69' = prop_sixty,
+    '70-79' = prop_sevenity,
+    '80-90' = prop_eighty
+  )
+  
+  b <- b * 100
+  
+  write.csv(b, paste0(file_save, str_sub(i, 1, -5), '_age_table.csv'))
+}
+
+
+
+file_div <- "C://Users/Yifei Wang/Desktop/analysis data/age table/"
+file_save <- "C://Users/Yifei Wang/Desktop/analysis data/age comparasion/"
+all_files = list.files(file_div)
+bm <- all_files[str_detect(all_files, paste0('bm','_'))]
+pbmcs <- all_files[str_detect(all_files, paste0('PbmCS','_'))]
+
+for (i in bm){
+  a <- read.csv(paste0(file_div,i))
+  bm_str <- str_sub(i,3)
+  for (j in pbmcs){
+    b <- read.csv(paste0(file_div,j))
+    pbmcs_str <- str_sub(j,6)
+    if (bm_str == pbmcs_str){
+        comp <- full_join(a,b, by = 'X')
+        colnames(comp) <- c('id','bm50-59','bm60-69', 'bm70-79', 'bm80-90','PbmCS50-59','PbmCS60-69','PbmCS70-79','PbmCS80-90')
+        write.csv(comp[,2:9], paste0(file_save,str_sub(i,4,-5), '_comparasion table.csv'))
+
+    }
+    
+  }
+}
+```
+
+
+
+```{r}
+#boxplot for age
+library(reshape2)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(stringr)
+library(rstatix)
+file_div <- 'C://Users/Yifei Wang/Desktop/analysis data/age comparasion/'
+file_save <- 'C://Users/Yifei Wang/Desktop/analysis data/age comparasion graph/'
+all_files <- list.files(file_div)
+
+for (i in all_files){
+  a <- read.csv(paste0(file_div,i),check.names = F)
+  b <- melt(a[,2:9])
+  b <- na.omit(b)
+  d <- b %>%
+    filter(variable %in% c('bm50-59','bm60-69', 'bm70-79', 'bm80-90'))
+  d$sample <- "bm"
+  e <- b %>% 
+    filter(variable %in% c('PbmCS50-59','PbmCS60-69','PbmCS70-79','PbmCS80-90'))
+  e$sample <- "PbmCS"
+  b <- rbind(d,e)
+  colnames(b) <- c('age','prop','sample')
+  b$sample <- as.factor(b$sample)
+  assign(str_sub(i,1,-33),b)
+  assign(paste0(str_sub(i,1,-33),"_sig"),compare_means(data = get(str_sub(i,1,-33)), prop ~ age))
+}
+
+
+
+  my_comparisons <- list(c('bm80-90','bm60-69'),c('bm50-59','bm80-90'),c('PbmCS60-69','PbmCS50-59'),c('bm80-90','PbmCS50-59'))
+  my_comparisons <- list(c('bm80-90','PbmCS50-59'),c('bm50-59','bm70-79'),c('PbmCS80-90','PbmCS50-59'))
+  
+  ggplot(ll,aes(x = age, y = prop, fill = sample)) +
+  geom_boxplot(alpha = 0.5) +
+  geom_point(aes(fill = sample)) +
+  xlab("Age Group") +
+  ylab("%HSC") +
+  theme_bw() +
+  theme(text = element_text(size =9)) +
+  stat_compare_means(comparisons = my_comparisons)
+  
+ll <- rbind (`HSC-E-1`,`HSC-E-2`,`HSC-L-1`,`HSC-L-2`) 
+  a <- compare_means(data = ll, prop ~ age)
+  
+  ggsave(paste0(str_sub(i,1,-33),'_age.png'),plot = p, path = file_save) 
+
+  
+
+
+
+
+```
+
+
+
+```{r}
+#UMAP figure
+
+ggplot(pbmcs, aes(x = UMAP1, y = UMAP2)) +
+  geom_point(aes(colour = annotation), size = 0.0001) +
+  guides(colour = guide_legend(override.aes = list(size = 3))) +
+  theme(legend.text = element_text(size = 7)) +
+  labs(title = "PbmCS")
+
+
+
+```
+
+```{r}
+#linear regression
+all_var <- ls()
+for (i in all_var){
+  df <-  get(i)
+  male_df <- df %>%
+    filter (Sex == 'Male')
+  female_df <- df %>%
+    filter (Sex == "Female")
+  assign(paste0("Male_", i), male_df)
+  assign(paste0("Female_", i), female_df)
+}
+
+
+
+all_var <- ls()
+for (i in all_var){
+  df <- get(i)
+  df$Prop <- df$Prop * 100
+  assign(print(i), df)
+}
+
+
+
+
+
+
+
+
+
+
+
+all_var <- ls()
+file_save <- 'C://Users/Yifei Wang/Desktop/analysis data/sex comparasion graph/'
+for (i in all_var) {
+  df <- get(i) 
+  model <- lm(Prop ~ Age, data = df)
+  coeffs <- coef(model)
+  intercept <- round(coeffs[1], 2)  
+  slope <- round(coeffs[2], 2)  
+  summary_model <- summary(model)
+  
+  p_value <- summary_model$coefficients[2, 4]  
+  r_squared <- round(summary_model$r.squared, 3)  
+  p_text <- ifelse(p_value < 0.001, "p < 0.001", paste0("p = ", round(p_value, 3)))
+  eq_text <- paste0("y = ", intercept, " + ", slope, " * x\nR² = ", r_squared, ", ", p_text)
+
+  p <- ggplot(df, aes(x = Age, y = Prop)) +
+    geom_point() +
+    geom_smooth(method = "lm", col = "red") +
+    annotate("text", x = max(df$Age) * 0.7, y = max(df$Prop) * 0.9, 
+             label = eq_text, size = 5, hjust = 0) +
+    theme_bw() +
+    ylab(paste0('%',i))
+  ggsave(paste0(i,'_linear_regression.png'),plot = p, path = file_save)
+
+}
+
+
+```
+
+```{r}
+#stem cell total analysis
+bm_HSC <- `bm_HSC-E-1`
+bm_HSC$Prop <- `bm_HSC-E-1`$Prop +`bm_HSC-E-2`$Prop +`bm_HSC-L-1`$Prop +`bm_HSC-L-2`$Prop
+model <- lm(Prop ~ Age, data = bm_HSC)
+
+summary(model)
+
+
+
+
+
+```
+
+
+```{r}
+#sex analysis
+all_var <- ls()
+
+bm <- all_var[str_detect(all_var, "bm_")]
+pbmcs <- all_var[str_detect(all_var,"PbmCS_")]
+
+
+bm_sex <- NULL
+for (i in bm){
+  a <- get(i)
+  a$annotation <- str_sub(i,4)
+  a$type <- "bm"
+  bm_sex <- rbind(bm_sex,a)
+}
+
+pbmcs_sex <- NULL
+for(i in pbmcs){
+  a <- get(i)
+  a$annotation <- str_sub(i,7)
+  a$type <- "PbmCS"
+  pbmcs_sex <- rbind(pbmcs_sex,a)
+}
+
+sex_data <- rbind(bm_sex,pbmcs_sex)
+
+
+
+bm <- sex_data %>%
+  filter (type == "bm")
+pbmcs <- sex_data %>%
+  filter (type == "PbmCS")
+
+fifty_bm <- bm %>%
+  filter (between(Age, 50, 59))
+sixty_bm <- bm %>%
+  filter (between(Age, 60, 69))
+seventy_bm <- bm %>%
+  filter (between(Age, 70, 79))
+eighty_bm <- bm %>%
+  filter (between(Age, 80, 90))
+
+fifty_pbmcs <- pbmcs %>%
+  filter (between(Age, 50, 59))
+sixty_pbmcs <- pbmcs %>%
+  filter (between(Age, 60, 69))
+seventy_pbmcs <- pbmcs %>%
+  filter (between(Age, 70, 79))
+eighty_pbmcs <-pbmcs %>%
+  filter (between(Age, 80, 90))
+
+
+eighty_sex_data <- rbind(eighty_bm,eighty_pbmcs)
+fifty_sex_data <- rbind(fifty_bm,fifty_pbmcs)
+seventy_sex_data <- rbind(seventy_bm,seventy_pbmcs)
+sixty_sex_data <- rbind(sixty_bm,sixty_pbmcs)
+
+
+
+
+
+
+file_save <-  'C://Users/Yifei Wang/Desktop/analysis data/没有subcluster/80-90/'
+for (i in all_var){
+  df <- get(i)
+  df <- df %>% 
+    filter (between(Age, 80, 90))
+  stat.test <- df %>%
+  group_by(type) %>%
+  t_test(Prop ~ Sex) %>%
+  adjust_pvalue() %>%
+  add_significance("p")
+  
+  stat.test <- stat.test %>% 
+    add_xy_position(x = 'Sex')
+  
+  p <- ggboxplot(df, x = 'Sex', y = 'Prop', fill = 'type',facet.by = 'type') +
+    stat_pvalue_manual(stat.test, label = "p") +
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.10))) +
+    ylab(paste0('%',i)) +
+    geom_point()
+  
+  
+  ggsave(paste0(i,'_Gender_analysis.png'),plot = p, path = file_save)
+
+}
+
+
+
+
+
+
+file_save <-  'C://Users/Yifei Wang/Desktop/analysis data/combined sex difference graph/'
+for (i in unique(sex_data$annotation)){
+  sex_data_sub <- sex_data %>%
+    filter (annotation == i)
+  stat.test <- sex_data_sub %>%
+  t_test(Prop ~ Sex) %>%
+  adjust_pvalue() %>%
+  add_significance("p.adj")
+  
+  stat.test <- stat.test %>% 
+    add_xy_position(x = 'Sex')
+  
+  p <- ggboxplot(sex_data_sub, x = 'Sex', y = 'Prop', fill = 'Sex') +
+    stat_pvalue_manual(stat.test, label = "p.adj") +
+    ylab(paste0('%',i)) +
+    geom_jitter(width = 0.1, size = 1.0, alpha = 0.6)
+  
+  
+  ggsave(paste0(i,'_Gender_analysis.png'),plot = p, path = file_save)
+
+}
+
+```
+```{r}
+#UMAP plot for age and sex
+fifty <- without_undefined %>% filter(between(AGE, 50, 59))
+sixty <- without_undefined %>% filter(between(AGE, 60, 69))
+sevenity <- without_undefined %>% filter(between(AGE, 70, 79))
+eighty <- without_undefined %>% filter(between(AGE, 80, 90))
+
+male <- without_undefined %>% filter(SEX == 'Male')
+female <- without_undefined %>% filter(SEX == 'Female')
+
+ggplot(female, aes(x = UMAP1, y = UMAP2)) +
+  geom_point(aes(colour = annotation), size = 0.0001) +
+  guides(colour = guide_legend(override.aes = list(size = 3))) +
+  theme(legend.text = element_text(size = 7)) +
+  labs(title = "Female UMAP")
+
+
+
+```
+
+```{r}
+#contour plot for age and sex
+library(RColorBrewer)
+
+male_downsample  <- male %>% 
+  sample_n(200000)
+
+ggplot(male_downsample, aes(UMAP1, UMAP2)) +
+  geom_density_2d_filled(bins = 9) +
+  scale_fill_manual(values = colorRampPalette(c("white", "pink", "red", "darkred"))(9)) + 
+  labs(title = "Female Colored Contour Plot") +
+  theme_minimal()
+
+
+```
+
+```{r}
+# condition
+
+all_var <- ls()
+file_save <-  'C://Users/Yifei Wang/Desktop/analysis data/condition comparasion 1/'
+
+
+
+bm <- all_var[1:23]
+
+
+
+for (i in all_var){
+  
+  df <- get(i)
+  df <- df %>%
+    filter (condition != "QC")
+  p <- ggplot(df,aes(x = condition, y = Prop, fill = condition)) +
+  geom_boxplot(alpha = 0.5) +
+  geom_point(aes(fill = condition)) +
+  xlab("Condition Group") +
+  ylab(paste0("%",i)) +
+  theme_bw() +
+  theme(text = element_text(size =9))
+  assign(print(i),df)
+  ggsave(paste0(i,'_condition_analysis.png'),plot = p, path = file_save)
+  
+}
+
+
+compare_means(data =`CMP 1`, Prop ~ condition)
+
+
+all_var <- ls()
+file_save <- 'C://Users/Yifei Wang/Desktop/analysis data/bm PbmCs seperated/'
+for (i in all_var) {
+  df <- get(i) 
+  df <- df %>%
+    filter (type == 'bm')
+  
+  lm_results <- df %>%
+    group_by(Sex) %>%
+    summarize(
+      model = list(lm(Prop ~ Age, data = cur_data())), 
+      equation = paste0("y = ", round(coef(model[[1]])[1], 3), " + ", round(coef(model[[1]])[2], 3), "x"),
+      p_value = tidy(model[[1]])$p.value[2])
+
+  label_data <- lm_results %>%
+    mutate(label = paste0(Sex, ": ", equation, "\n p = ", round(p_value, 4)))
+
+  p <- ggplot(df, aes(x = Age, y = Prop, color = Sex)) +
+  geom_point(alpha = 0.7) + 
+  geom_smooth(method = "lm", se = FALSE) +  
+  theme_bw() + 
+  theme(legend.position = "right") +  
+  labs(x = "Age", y = paste0("%",i), title = paste0("bm ", i)) + 
+  geom_text(data = label_data, aes(x = Inf, y = Inf, label = label, color = Sex),
+            hjust = 1.1, vjust = c(1.1, 2.2), size = 4, show.legend = FALSE)
+  
+  ggsave(paste0(i,'_linear_regression.png'),plot = p, path = file_save)
+}
+  
+
+
+
+```
+
+
+
+```{r}
+library(tidyr)
+
+
+without_undefined$AGE <- as.numeric(without_undefined$AGE)
+without_undefined_new <- na.omit(without_undefined)
+for (va in unique(without_undefined_new$annotation)){
+
+  e <- NULL
+for (i in unique(without_undefined_new$batch)){
+  a <- without_undefined_new %>%
+    filter(batch == i)
+  for (j in unique(a$sample)){
+  b <- a %>% 
+    filter(sample == j)
+  d <- b %>%
+    filter (annotation == va)
+  total_number <- length(b$annotation)
+  sc_number <- length(d$annotation)
+  prop <- sc_number/total_number *100
+  f <- data.frame(i,j,total_number,sc_number,prop, unique(b$AGE),unique(b$SEX),unique(b$condition))
+  f <- f %>% 
+    separate(unique.b.condition., into = c("type", "time","condition"), sep = "_")
+  e <- rbind(e,f)
+  }
+}
+colnames(e) <- c('Batch','Sample','Total_number','Cell_number','Prop','Age','Sex','type','time','condition')
+assign(print(va),e)
+}
+
+```
+
+
+
+
+
+
+```{r}
+#hiVAF loVAF
+
+
+all_var <- ls()
+file_save <-  'C://Users/Yifei Wang/Desktop/analysis data/bm PbmCs seperated/condition analysis/3 type/Spliceosome/'
+
+
+for (i in all_var){
+  df <- get(i)
+  df <- df %>%
+    filter (Condition %in% c('ND','Spliceosome'))
+  stat.test <- df %>%
+    group_by(Sex) %>%
+  t_test(Prop ~ Condition) %>%
+  adjust_pvalue() %>%
+  add_significance("p")
+  
+  stat.test <- stat.test %>% 
+    add_xy_position(x = 'Condition')
+  
+  p <- ggboxplot(df, x = 'Condition', y = 'Prop', fill  = 'sex', facet.by = 'type') +
+    stat_pvalue_manual(stat.test, label = "p") +
+    ylab(paste0('%',i)) +
+    geom_jitter(width = 0.1, size = 1.0, alpha = 0.6) +
+    ggtitle(paste0('bm ',i))
+  
+  
+  ggsave(paste0(i,'_bm_condition.png'),plot = p, path = file_save)
+
+}
+
+
+
+
+
+
+```
+
+```{r}
+#get subclusters combined
+prop <- `B Committed Prog 1`$Prop +`B Committed Prog 2`$Prop +`B Committed Prog 3`$Prop + `B Committed Prog 4`$Prop +`B Committed Prog 5`$Prop
+B_all <- data.frame(Prop = prop, Sex = `B Committed Prog 1`$Sex, Condition = `B Committed Prog 1`$Condition, Age = `B Committed Prog 1`$Age, type = `B Committed Prog 1`$type, Mutation = `B Committed Prog 1`$Mutation)
+
+
+prop <- `CLP 1`$Prop +`CLP 2`$Prop +`CLP 3`$Prop 
+CLP_all <- data.frame(Prop = prop, Sex = `CLP 1`$Sex, Condition = `CLP 1`$Condition, Age = `CLP 1`$Age, type = `CLP 1`$type, Mutation = `CLP 1`$Mutation)
+
+
+prop <- `CMP 1`$Prop +`CMP 2`$Prop
+CMP_all <- data.frame(Prop = prop, Sex = `CMP 1`$Sex, Condition = `CMP 1`$Condition, Age = `CMP 1`$Age, type = `CMP 1`$type, Mutation = `CMP 1`$Mutation)
+
+
+prop <- `Erk-Mk Prog 1 (MEP)`$Prop +`Erk-Mk Prog 2`$Prop
+Erk_Mk_Prog_all <- data.frame(Prop = prop, Sex = `Erk-Mk Prog 2`$Sex, Condition = `Erk-Mk Prog 2`$Condition, Age = `Erk-Mk Prog 2`$Age, type = `Erk-Mk Prog 2`$type, Mutation = `Erk-Mk Prog 2`$Mutation)
+
+
+prop <- `HSC-E-1`$Prop +`HSC-E-2`$Prop +`HSC-L-1`$Prop + `HSC-L-2`$Prop 
+HSC_all <- data.frame(Prop = prop, Sex = `HSC-E-1`$Sex, Condition = `HSC-E-1`$Condition, Age = `HSC-E-1`$Age, type = `HSC-E-1`$type, Mutation = `HSC-E-1`$Mutation)
+
+
+```
+
+
+
+
+```{r}
+
+
+file_save <-  'C://Users/Yifei Wang/Desktop/analysis data/NEW/'
+
+for (i in all_var){
+  df <- get(i)
+  fifty <- df %>% filter(between(Age, 50, 59))
+  sixty <- df %>% filter(between(Age, 60, 69))
+  seventy <- df %>% filter(between(Age, 70, 79))
+  eighty <- df %>% filter(between(Age, 80, 90))
+  
+  fifty$age_group <- "50-59"
+  sixty$age_group <- "60-69"
+  seventy$age_group <- "70-79"
+  eighty$age_group <- "80-90"
+  
+  df <- rbind(fifty,sixty,seventy,eighty)
+  p <- ggboxplot(df, x = 'age_group', y = 'Prop', fill  = 'Sex', facet.by = 'condition')
+  
+   ggsave(paste0(i,'_condition_analysis.png'),plot = p, path = file_save)
+
+
+
+}
+```
+
+```{r}
+  library(RColorBrewer)
+
+file_save <-  'C://Users/Yifei Wang/Desktop/analysis data/bm PbmCs seperated/sex analysis/'
+
+df <- female %>%
+  filter(str_detect(condition, 'pbmcs_'))
+
+
+df_downsample <- df %>% 
+  sample_n(50000)
+  
+p <- ggplot(df_downsample, aes(UMAP1, UMAP2)) +
+  geom_density_2d_filled(bins = 9) +
+  scale_fill_manual(values = colorRampPalette(c("white", "pink", "red", "darkred"))(9)) + 
+  labs(title = "Female PbmCs Contour UMAP") +
+  theme_bw() +
+  xlim(-15,15) +
+  ylim(-15,15)
+  
+ggsave('Female PbmCs contour UMAP.png',plot = p, path = file_save)  
+  
+for (i in unique(df$condition)){
+  
+  df_new <- df %>%
+    filter(condition == i)
+  
+df_downsample <- df_new %>% 
+  sample_n(50000)
+
+   p <- ggplot(df_downsample, aes(UMAP1, UMAP2)) +
+  geom_density_2d_filled(bins = 9) +
+  scale_fill_manual(values = colorRampPalette(c("white", "pink", "red", "darkred"))(9)) + 
+  labs(title = i) +
+  theme_minimal()
+
+  ggsave(paste0(i,'contour_UMAP.png'),plot = p, path = file_save)
+  
+  
+
+}
+  
+  
+    p <- ggplot(df_new, aes(x = UMAP1, y = UMAP2)) +
+  geom_point(aes(colour = annotation), size = 0.0001) +
+  guides(colour = guide_legend(override.aes = list(size = 3))) +
+  theme(legend.text = element_text(size = 7)) +
+  labs(title = i)
+```
+
+
+
+
+```{r}
+library(ggplot2)
+library(patchwork)
+
+plot_list <- list()
+
+for (i in 1:6) {
+  plot_list[[i]] <- ggplot(mpg, aes(displ, hwy)) + 
+    geom_point(color = sample(colors(), 1)) + 
+    ggtitle(paste("Plot", i))
+}
+
+# 组合图像（自动调整网格）
+final_plot <- wrap_plots(plot_list, ncol = 3)  # 每行 3 张图
+print(final_plot)
+
+```
+
+
+
+```{r}
+file_save <- 'C://Users/Yifei Wang/Desktop/analysis data/没有subcluster/70-79/'
+
+for (i in all_var) {
+  df <- get(i)
+  df <- df %>% 
+    filter(between(Age, 70, 79)) %>% 
+    filter(!is.na(Prop))  # 移除NA值
+
+  # 确保每个type的Sex组别都有至少两个观测值
+  df_filtered <- df %>%
+    group_by(type, Sex) %>%
+    filter(n() >= 2) %>%   
+    ungroup()
+
+  if (nrow(df_filtered) > 0) {  # 确保数据非空
+    stat.test <- df_filtered %>%
+      group_by(type) %>%
+      t_test(Prop ~ Sex) %>%
+      adjust_pvalue() %>%
+      add_significance("p")
+    
+    stat.test <- stat.test %>% 
+      add_xy_position(x = 'Sex')
+
+    p <- ggboxplot(df_filtered, x = 'Sex', y = 'Prop', fill = 'type', facet.by = 'type') +
+      stat_pvalue_manual(stat.test, label = "p") +
+      scale_y_continuous(expand = expansion(mult = c(0.05, 0.10))) +
+      ylab(paste0('%', i)) +
+      geom_point()
+
+    ggsave(paste0(i, '_Gender_analysis.png'), plot = p, path = file_save)
+  } else {
+    message(paste("Skipping", i, "due to insufficient data"))
+  }
+}
+```
+```{r}
+#heatmap creating
+
+
+clean_data <- without_undefined %>%
+  filter (!(Patient_id %in% c("BC1","BC2",'BC5','BC6')))
+
+channel <- unique(clean_data$annotation)
+id <- unique(clean_data$Patient_id)
+
+sorted_channel <- channel[order(channel)]
+sorted_id <- id[order(id)]
+
+e <- NULL
+for (i in sorted_id){
+ cc <- clean_data %>%
+   filter (Patient_id == i )
+ age <- unique(cc$AGE)
+ e <- cbind(e,age)
+}
+
+
+
+expr_matrix <- matrix(0,nrow = length(channel), ncol = length(id), dimnames = list(sorted_channel, sorted_id))
+
+round_number <- 1
+inner_number <- 1
+for (i in sorted_id){
+  df <- clean_data %>% 
+    filter (Patient_id == i)
+  total_number <- length(df$Patient_id)
+  for (j in sorted_channel){
+    a <- df %>%
+      filter(annotation == j)
+    cell_number <- length(a$annotation)
+    prop <- cell_number/total_number *100
+    expr_matrix[inner_number,round_number] <- prop
+    inner_number <- inner_number +1
+    if (inner_number >23){
+      inner_number <- 1
+    }
+  }
+  round_number <- round_number + 1
+}
+
+write.csv(expr_matrix, 'C://Users/Yifei Wang/Desktop/analysis data/patient2.csv')
+
+
+
+
+
+
+
+
+```
+
+
+
+
+```{r}
+
+E1 <- with_mutation_new %>%
+  filter(annotation == 'HSC-E-1')
+E2 <- with_mutation_new %>%
+  filter(annotation == 'HSC-E-2')
+L1 <- with_mutation_new %>%
+  filter(annotation == 'HSC-L-1')
+L2 <- with_mutation_new %>%
+  filter(annotation == 'HSC-L-2')
+
+other <- with_mutation_new %>%
+  filter (!(annotation %in% c('HSC-E-1','HSC-E-2','HSC-L-1','HSC-L-2')))
+
+E1$annotation <- 'HSC-L-1'
+E2$annotation <- 'HSC-L-2'
+L1$annotation <- 'HSC-E-1'
+L2$annotation <- 'HSC-E-2'
+
+with_mutation_new <- rbind(E1,E2,L1,L2,other)
+
+
+
+
+#pseudotime sequence 
+bm <- with_mutation_new %>%
+  filter (type %in% c('pbmcs_baseline','pbmcs_12m'))
+UMAP_data <- data.frame(UMAP1 = bm$UMAP1, UMAP2 = bm$UMAP2)
+
+library(slingshot)
+library(ggsci)
+
+UMAP_data <- as.matrix(bm[, c("UMAP1", "UMAP2")])
+
+
+cluster_labels <- factor(bm$annotation)
+
+sample_idx <- sample(nrow(UMAP_data), 150000) 
+UMAP_sample <- UMAP_data[sample_idx, ]
+cluster_sample <- cluster_labels[sample_idx]
+
+slingshot_obj <- slingshot(
+    UMAP_sample,
+    clusterLabels = cluster_sample,
+    start.clus = c('HSC-E-1','HSC-E-2')
+)
+
+
+library(ggplot2)
+
+# 获取 Slingshot 轨迹数据
+sds <- SlingshotDataSet(slingshot_obj)
+
+# 创建一个空的 data.frame 用于存储所有轨迹数据
+all_curves_df <- data.frame()
+
+# 遍历所有轨迹并将它们合并到一个 data.frame 中
+for (i in seq_along(sds@curves)) {
+  curve_df <- data.frame(sds@curves[[i]]$s)
+  curve_df$curve_id <- i  # 添加一个标识符来区分不同的轨迹
+  all_curves_df <- rbind(all_curves_df, curve_df)
+}
+
+# 绘制 UMAP 点图
+ggplot(data = as.data.frame(UMAP_sample), aes(x = UMAP1, y = UMAP2, color = cluster_sample)) +
+  geom_point(alpha = 0.6, size = 1) +  # 画点
+  geom_path(data = all_curves_df, aes(x = UMAP1, y = UMAP2, group = curve_id), color = "black", linewidth = 0.5) +  # 画所有轨迹
+  theme_bw() +
+  scale_color_igv() +  # 颜色更清晰
+  ggtitle("Trajectory Analysis using Slingshot") +
+  guides(colour = guide_legend(override.aes = list(size = 3))) +
+  theme(legend.text = element_text(size = 7))
+
+
+
+
+```
+
+```{r}
+library(readxl)
+library(dplyr)
+a <- read_xlsx("C://Users/Yifei Wang/Desktop/mutation table.xlsx")
+with_mutation <- NULL
+for (i in unique(without_undefined$Patient_id)){
+  b <- a %>%
+    filter (ID == i)
+  cc <- without_undefined %>%
+    filter (Patient_id == i)
+  cc$mutation <- b$concat_code[[1]]
+  with_mutation <- rbind(with_mutation, cc)
+  
+}
+
+library(tidyr)
+  with_mutation <- with_mutation %>% 
+    separate(condition, into = c("type", "time","condition"), sep = "_")
+  with_mutation <- with_mutation %>%
+  unite("type", type, time, sep = "_", remove = T) 
+
+  
+  
+  unique(with_mutation$type)
+  
+  with_mutation[which(with_mutation$type == 'bm'),]$type <- 'bm'
+  
+  with_mutation_new <- with_mutation %>%
+    filter(type != 'pbmcs_QC')
+  
+
+```
+
+
+
+
+```{r}
+library(dplyr)
+with_mutation_new$AGE <- as.numeric(with_mutation_new$AGE)
+
+with_mutation_new<- na.omit(with_mutation_new)
+
+
+for (va in unique(with_mutation_new$annotation)){
+
+    e <- NULL
+  
+for (i in unique(with_mutation_new$type)){
+  df <- with_mutation_new %>% 
+    filter (type == i)
+  for (j in unique(df$batch)){
+    a <- df %>%
+      filter(batch == j)
+    for (z in unique(a$sample)){
+      b <- a %>%
+        filter(sample == z)
+      d <- b %>%
+        filter (annotation == va)
+      total_number <- length(b$annotation)
+      sc_number <- length(d$annotation)
+      prop <- sc_number/total_number *100
+      f <- data.frame(i,j,total_number,sc_number,prop,unique(b$AGE),unique(b$SEX),unique(b$condition),unique(b$mutation),unique(b$type))
+      e <- rbind(e,f)
+        
+    }
+  }
+  
+}
+colnames(e) <- c('Batch','Sample','Total_number','Cell_number','Prop','Age','Sex','Condition','Mutation','type')
+assign(va,e)
+}
+
+
+```
+
+
+
+```{r}
+
+
+library(dplyr)
+library(stringr)
+library(reshape2)
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(stringr)
+library(rstatix)
+library(writexl)
+
+all_var <- ls()
+file_save <- "C://Users/Yifei Wang/Desktop/analysis data/BM PBMCs seperated/mutation analysis/DNMT3A TET2 ND/"
+
+all_stats <- data.frame()
+
+for (i in all_var){
+   df <- get(i) %>%
+    filter(type == 'bm_baseline')   
+  
+  TET2 <- df %>%
+    filter(str_detect(Mutation, 'TET2'))
+  ND <- df %>%
+    filter(str_detect(Mutation, 'ND'))
+  DNMT3A <- df %>% 
+    filter(str_detect(Mutation, 'DNMT3A'))
+  DNMT3A$Mutation <- 'DNMT3A'
+  TET2$Mutation <- 'TET2'
+  e <- rbind(TET2, DNMT3A,ND)
+
+  stat.test <- e %>%
+    group_by(Sex) %>%
+    t_test(Prop ~ Mutation) %>%
+    adjust_pvalue() %>%
+    add_significance("p")
+
+  e_filtered <- e %>%
+    group_by(Sex) %>%
+    mutate(Q1 = quantile(Prop, 0.25),
+           Q3 = quantile(Prop, 0.75),
+           IQR = Q3 - Q1,
+           Lower = Q1 - 1.5 * IQR,
+           Upper = Q3 + 1.5 * IQR) %>%
+    filter(Prop >= Lower & Prop <= Upper) %>%
+    ungroup()
+
+  boxplot_limits <- e %>%
+    group_by(Sex, Mutation) %>%
+    summarise(whisker_max = max(Prop[Prop <= (quantile(Prop, 0.75) + 1.5 * IQR(Prop))]),
+              whisker_min = min(Prop[Prop >= (quantile(Prop, 0.25) - 1.5 * IQR(Prop))])) %>%
+    ungroup()
+
+  y_max_boxplot <- max(boxplot_limits$whisker_max)  
+  y_min_boxplot <- min(boxplot_limits$whisker_min) 
+
+
+  x_mapping <- data.frame(Mutation = unique(e$Mutation), x_value = 1:length(unique(e$Mutation)))
+
+
+  stat.test <- stat.test %>%
+    left_join(x_mapping, by = c("group1" = "Mutation")) %>%
+    rename(x_start = x_value) %>%
+    left_join(x_mapping, by = c("group2" = "Mutation")) %>%
+    rename(x_end = x_value) %>%
+    mutate(y.position = y_max_boxplot + 0.05 * y_max_boxplot) 
+
+
+  summary_stats <- e %>%
+    group_by(Sex, Mutation) %>%
+    summarise(
+      Median = median(Prop),
+      Q1 = quantile(Prop, 0.25),
+      Q3 = quantile(Prop, 0.75),
+      IQR = Q3 - Q1,
+      .groups = "drop"
+    )
+
+
+  summary_stats$Variable <- i  
+  all_stats <- rbind(all_stats, summary_stats)
+
+
+  p <- ggboxplot(e, x = 'Mutation', y = 'Prop', fill = 'Sex', facet.by = 'Sex',
+                 outlier.shape = NA) +  
+    ylab(paste0('%', i)) +
+    geom_jitter(data = e_filtered, width = 0.1, size = 1.0, alpha = 0.6) +  
+    ggtitle(paste0(i, ' BM mutation')) +
+    coord_cartesian(ylim = c(y_min_boxplot, y_max_boxplot + 0.2 * y_max_boxplot))  
+
+
+  p <- p + geom_segment(data = stat.test,
+                        aes(x = x_start, 
+                            xend = x_end, 
+                            y = y.position, 
+                            yend = y.position),
+                        color = "black", size = 0.9) +  
+    geom_text(data = stat.test, 
+              aes(x = (x_start + x_end) / 2,  
+                  y = y.position + 0.05 * y_max_boxplot, 
+                  label = p),
+              color = "blue", size = 5) 
+
+  # **保存图片**
+  ggsave(paste0(file_save, '/', i, '_TET2_BM.png'), plot = p)
+}
+
+# **保存 Excel 统计表**
+write_xlsx(all_stats, paste0(file_save, "/boxplot_median_iqr.xlsx"))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  df[which(df$type %in% c('pbmcs_baseline','pbmcs_12m')),]$type <- 'PBMCs'
+  df[which(df$type == 'bm_baseline'),]$type <- 'BM'
+    
+   df <- get(i) %>%
+    filter(type == 'bm_baseline')   
+    
+     df <- get(i) %>%
+    filter(type %in% c('pbmcs_baseline','pbmcs_12m')) 
+    
+```
+
+
+
+```{r}
+
+all_stats <- data.frame()
+
+for (i in all_var){
+  df <- get(i) 
+  df[which(df$type %in% c('pbmcs_baseline','pbmcs_12m')),]$type <- 'PBMCs'
+  df[which(df$type == 'bm_baseline'),]$type <- 'BM'
+  
+  TET2 <- df %>%
+    filter(str_detect(Mutation, 'TET2'))
+  ND <- df %>%
+    filter(str_detect(Mutation, 'ND'))
+  TET2$Mutation <- 'TET2'
+  e <- rbind(TET2, ND)
+
+  stat.test <- e %>%
+    group_by(type) %>%
+    t_test(Prop ~ Mutation) %>%
+    adjust_pvalue() %>%
+    add_significance("p")
+
+  e_filtered <- e %>%
+    group_by(type) %>%
+    mutate(Q1 = quantile(Prop, 0.25),
+           Q3 = quantile(Prop, 0.75),
+           IQR = Q3 - Q1,
+           Lower = Q1 - 1.5 * IQR,
+           Upper = Q3 + 1.5 * IQR) %>%
+    filter(Prop >= Lower & Prop <= Upper) %>%
+    ungroup()
+
+  boxplot_limits <- e %>%
+    group_by(type, Mutation) %>%
+    summarise(whisker_max = max(Prop[Prop <= (quantile(Prop, 0.75) + 1.5 * IQR(Prop))]),
+              whisker_min = min(Prop[Prop >= (quantile(Prop, 0.25) - 1.5 * IQR(Prop))])) %>%
+    ungroup()
+
+  y_max_boxplot <- max(boxplot_limits$whisker_max)  
+  y_min_boxplot <- min(boxplot_limits$whisker_min) 
+
+
+  x_mapping <- data.frame(Mutation = unique(e$Mutation), x_value = 1:length(unique(e$Mutation)))
+
+
+  stat.test <- stat.test %>%
+    left_join(x_mapping, by = c("group1" = "Mutation")) %>%
+    rename(x_start = x_value) %>%
+    left_join(x_mapping, by = c("group2" = "Mutation")) %>%
+    rename(x_end = x_value) %>%
+    mutate(y.position = y_max_boxplot + 0.05 * y_max_boxplot) 
+
+
+  summary_stats <- e %>%
+    group_by(type, Mutation) %>%
+    summarise(
+      Median = median(Prop),
+      Q1 = quantile(Prop, 0.25),
+      Q3 = quantile(Prop, 0.75),
+      IQR = Q3 - Q1,
+      .groups = "drop"
+    )
+
+
+  summary_stats$Variable <- i  
+  all_stats <- rbind(all_stats, summary_stats)
+
+
+  p <- ggboxplot(e, x = 'Mutation', y = 'Prop', fill = 'type', facet.by = 'type',
+                 outlier.shape = NA) +  
+    ylab(paste0('%', i)) +
+    geom_jitter(data = e_filtered, width = 0.1, size = 1.0, alpha = 0.6) +  
+    ggtitle(paste0(i, ' mutation')) +
+    coord_cartesian(ylim = c(y_min_boxplot, y_max_boxplot + 0.2 * y_max_boxplot))  
+
+
+  p <- p + geom_segment(data = stat.test,
+                        aes(x = x_start, 
+                            xend = x_end, 
+                            y = y.position, 
+                            yend = y.position),
+                        color = "black", size = 0.9) +  
+    geom_text(data = stat.test, 
+              aes(x = (x_start + x_end) / 2,  
+                  y = y.position + 0.05 * y_max_boxplot, 
+                  label = p),
+              color = "blue", size = 5) 
+
+  ggsave(paste0(file_save, '/', i, '_TET2_mutation.png'), plot = p)
+}
+
+write_xlsx(all_stats, paste0(file_save, "/boxplot_median_iqr.xlsx"))
+```
+
+
+
+
+
+```{r}
+
+
+
+  age_groups <- c("50-59", "80-90")
+total_counts <- c()
+mutation_counts <- c()
+  a <- `T Prog` %>% 
+    filter (type == "bm_baseline")
+  fifty <- a %>%
+    filter(between(Age, 50, 59))
+  eighty <- a %>% 
+    filter(between(Age, 80, 90))
+  DNMT3A_fifty <- fifty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  DNMT3A_eighty <- eighty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+
+  count_fifty <- length(fifty$Age)
+  count_eighty <- length(eighty$Age)
+  
+  mut_count_fifty <- length(DNMT3A_fifty$Age)
+  mut_count_eighty <- length(DNMT3A_eighty$Age)
+  
+
+  total_counts <- c(count_fifty, count_eighty)
+  mutation_counts <- c(mut_count_fifty, mut_count_eighty)
+
+
+df <- data.frame(Age_Group = rep(age_groups, each = 2),
+                 Category = rep(c("Total Samples", "DNMT3A Mutations"), times = 2),
+                 Count = c(total_counts[1], mutation_counts[1],total_counts[2], mutation_counts[2]))
+
+
+ggplot(df, aes(x = Age_Group, y = Count, fill = Category)) +
+  geom_bar(stat = "identity", position = "dodge") +  # 分组柱状图
+  geom_text(aes(label = Count), position = position_dodge(width = 0.9), vjust = -0.5, size = 5) +
+  labs(x = "Age Group", y = "Sample Count") +
+  theme_minimal() +
+  scale_fill_manual(values = c("Total Samples" = "grey", "DNMT3A Mutations" = "red")) +
+  ylim(0,80)
+
+  
+
+```
+
+
+
+
+```{r}
+all_var <- ls()
+file_save <- "C://Users/Yifei Wang/Desktop/analysis data/BM PBMCs seperated/condition and mutation and age/"
+
+
+for (i in all_var){
+  a <- get(i)
+  a <- a %>% 
+    filter (type == 'bm_baseline') %>%
+    filter (Sex == 'Female')
+  fifty <- a %>%
+    filter(between(Age, 50, 59))
+  sixty <- a %>%
+    filter(between(Age, 60, 69))
+  seventy <- a %>%
+    filter(between(Age, 70, 79))
+  eighty <- a %>% 
+    filter(between(Age, 80, 90))
+  fifty$Age <- "50-59"
+  sixty$Age <- "60-69"
+  seventy$Age <- "70-79"
+  eighty$Age <- '80-90'
+  
+  fifty_DNMT3A <- fifty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+    fifty_DNMT3A$Mutation <- "DNMT3A"
+  sixty_DNMT3A <- sixty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+    sixty_DNMT3A$Mutation <- "DNMT3A"
+  seventy_DNMT3A <- seventy %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  seventy_DNMT3A$Mutation <- "DNMT3A"
+  eighty_DNMT3A <- eighty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  eighty_DNMT3A$Mutation <- "DNMT3A"
+  
+  
+    fifty_TET2 <- fifty %>%
+    filter(str_detect(Mutation, 'TET2'))
+    fifty_TET2$Mutation <- "TET2"
+  sixty_TET2 <- sixty %>%
+    filter(str_detect(Mutation, 'TET2'))
+    sixty_TET2$Mutation <- "TET2"
+  seventy_TET2 <- seventy %>%
+    filter(str_detect(Mutation, 'TET2'))
+  seventy_TET2$Mutation <- "TET2"
+  eighty_TET2 <- eighty %>%
+    filter(str_detect(Mutation, 'TET2'))
+  eighty_TET2$Mutation <- "TET2"
+  
+  
+    fifty_ND <- fifty %>%
+      filter(str_detect(Mutation, 'ND'))
+    sixty_ND <- sixty %>%
+      filter(str_detect(Mutation, 'ND'))
+    seventy_ND <- seventy %>%
+      filter(str_detect(Mutation, 'ND'))
+    eighty_ND <- eighty %>%
+      filter(str_detect(Mutation, 'ND'))
+  
+  e <- rbind(fifty_DNMT3A, sixty_DNMT3A, seventy_DNMT3A, eighty_DNMT3A, fifty_TET2, sixty_TET2, seventy_TET2, eighty_TET2,fifty_ND, sixty_ND, seventy_ND,eighty_ND)
+  
+    stat.test <- e %>%
+    group_by(Age) %>%
+    t_test(Prop ~ Mutation) %>%
+    adjust_pvalue() %>%
+    add_significance("p")
+    
+        stat.test <- stat.test %>% 
+      add_xy_position(x = 'Mutation')
+
+    p <- ggboxplot(e, x = 'Mutation', y = 'Prop', fill = 'Age', facet.by = 'Age') +
+      stat_pvalue_manual(stat.test, label = "p") +
+      scale_y_continuous(expand = expansion(mult = c(0.05, 0.10))) +
+      ylab(paste0('%', i)) +
+      geom_point()
+    
+    ggsave(paste0(file_save, '/', i, '_DNMT3A_mutation.png'), plot = p)
+
+} 
+
+
+```
+
+
+```{r}
+filter (type %in% c("pbmcs_baseline", 'pbmcs_12m'))
+
+filter (type == 'bm_baseline')
+```
+
+
+
+```{r}
+all_var <- ls()
+file_save <- "C://Users/Yifei Wang/Desktop/analysis data/BM PBMCs seperated/condition and mutation and age/"
+for (i in all_var){
+  a <- get(i)
+  a <- a %>% 
+    filter (type %in% c('pbmcs_baseline','pbmcs_12m')) %>%
+    filter (Sex == 'Female')
+  
+  condition_df <- a %>%
+    filter (Condition %in% c( "ND", "DDRp"))
+  
+  ND_df <- condition_df %>%
+    filter (str_detect(Mutation, 'ND')) 
+
+  
+  p53_df <- condition_df %>%
+    filter (str_detect(Mutation, '53'))
+  
+
+  
+  p53_df$Mutation <- 'TP53'
+  ND_df$Mutation <- 'No Mutation'
+  
+  ND_df$Condition <- 'DDRp'
+
+
+
+  
+  
+  e <- rbind(p53_df,ND_df)
+  
+    stat.test <- e %>%
+    group_by(Condition) %>%
+    t_test(Prop ~ Mutation) %>%
+    adjust_pvalue() %>%
+    add_significance("p")
+    
+    stat.test <- stat.test %>% 
+      add_xy_position(x = 'Mutation')
+
+    p <- ggboxplot(e, x = 'Mutation', y = 'Prop', fill = 'lightgreen', facet.by = 'Condition') +
+      stat_pvalue_manual(stat.test, label = "p") +
+      scale_y_continuous(expand = expansion(mult = c(0.05, 0.10))) +
+      ylab(paste0('%', i)) +
+      geom_point()
+    
+    ggsave(paste0(file_save, '/', i, '_DNMT3A_mutation.png'), plot = p)
+
+} 
+
+
+
+"CH"        "hiVAFCHIP" "loCH"      "loVAFCHIP" "DDRp" 
+```
+
+```{r}
+bm <- B_all %>%
+  filter (type == 'bm_baseline') %>%
+  filter (Sex == "Female")
+TET2 <- bm %>%
+  filter (str_detect(Mutation, 'DNMT3A'))
+DNMT3A <- bm %>%
+  filter (str_detect(Mutation, 'TET2'))
+unique(TET2$Condition)
+table(TET2$Condition)
+unique(DNMT3A$Condition)
+table(DNMT3A$Condition)
+
+
+sp <- B_all %>%
+  filter(Condition == 'Spliceosome') %>%
+  filter (Sex == 'Male')
+
+table(sp$Mutation)
+
+ddrp <- B_all %>%
+  filter(Condition == 'DDRp') %>%
+  filter(type == 'bm_baseline')
+table(ddrp$Mutation)
+```
+
+```{r}
+[1] "CH"        "hiVAFCHIP" "loCH"      "loVAFCHIP" "DDRp"     
+[1] "CH"          "loVAFCHIP"   "hiVAFCHIP"   "loCH"        "DDRp"        "Spliceosome"
+```
+
+
+
+```{r}
+all_var <- ls()
+file_save <- 'C://Users/Yifei Wang/Desktop/analysis data/'
+df_output <- NULL
+
+for (i in all_var){
+  df <- get(i)
+  df <- df %>%
+    filter(type == 'bm_baseline')
+    filter (Condition %in% c('loVAFCHIP','hiVAFCHIP','CH','loCH'))%>%
+    filter(Sex == 'Female')
+  
+  
+  fifty <- df %>%
+    filter(between(Age, 50, 59))
+  sixty <- df %>%
+    filter(between(Age, 60, 69))
+  seventy <- df %>%
+    filter(between(Age, 70, 79))
+  eighty <- df %>% 
+    filter(between(Age, 80, 90))
+  
+  fifty_DNMT3A <- fifty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+    fifty_DNMT3A$Mutation <- "DNMT3A"
+  sixty_DNMT3A <- sixty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+    sixty_DNMT3A$Mutation <- "DNMT3A"
+  seventy_DNMT3A <- seventy %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  seventy_DNMT3A$Mutation <- "DNMT3A"
+  eighty_DNMT3A <- eighty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  eighty_DNMT3A$Mutation <- "DNMT3A"
+  
+  
+    fifty_TET2 <- fifty %>%
+    filter(str_detect(Mutation, 'TET2'))
+    fifty_TET2$Mutation <- "TET2"
+  sixty_TET2 <- sixty %>%
+    filter(str_detect(Mutation, 'TET2'))
+    sixty_TET2$Mutation <- "TET2"
+  seventy_TET2 <- seventy %>%
+    filter(str_detect(Mutation, 'TET2'))
+  seventy_TET2$Mutation <- "TET2"
+  eighty_TET2 <- eighty %>%
+    filter(str_detect(Mutation, 'TET2'))
+  eighty_TET2$Mutation <- "TET2"
+  
+    fifty_ND <- fifty %>%
+      filter(str_detect(Mutation, 'ND'))
+    sixty_ND <- sixty %>%
+      filter(str_detect(Mutation, 'ND'))
+    seventy_ND <- seventy %>%
+      filter(str_detect(Mutation, 'ND'))
+    eighty_ND <- eighty %>%
+      filter(str_detect(Mutation, 'ND'))
+  
+  fifty_DNMT3A_mean <- mean(fifty_DNMT3A$Prop)
+  sixty_DNMT3A_mean <- mean(sixty_DNMT3A$Prop)
+  seventy_DNMT3A_mean <- mean(seventy_DNMT3A$Prop)
+  eighty_DNMT3A_mean <- mean(eighty_DNMT3A$Prop)
+  
+  fifty_TET2_mean <- mean(fifty_TET2$Prop)
+  sixty_TET2_mean <- mean(sixty_TET2$Prop)
+  seventy_TET2_mean <- mean(seventy_TET2$Prop)
+  eighty_TET2_mean <- mean(eighty_TET2$Prop)
+  
+  fifty_ND_mean <- mean(fifty_ND$Prop)
+  sixty_ND_mean <- mean(sixty_ND$Prop)
+  seventy_ND_mean <- mean(seventy_ND$Prop)
+  eighty_ND_mean <- mean(eighty_ND$Prop)
+  
+  
+  e <- c(i, unique(df$Sex),fifty_DNMT3A_mean,fifty_TET2_mean, fifty_ND_mean,
+         sixty_DNMT3A_mean,sixty_TET2_mean, sixty_ND_mean,
+         seventy_DNMT3A_mean,seventy_TET2_mean, seventy_ND_mean,
+         eighty_DNMT3A_mean,eighty_TET2_mean, eighty_ND_mean)
+  
+  df_output <- rbind(df_output,e)
+}
+
+
+write_xlsx(as.data.frame(df_output), paste0(file_save, "/heatmap_age.xlsx"))
+
+
+```
+
+
+
+
+```{r}
+df_output <- NULL
+for (i in all_var){
+  df <- get(i)
+  df <- df %>%
+    filter (Condition %in% c('loVAFCHIP','hiVAFCHIP','CH','loCH'))%>%
+    filter(Sex == 'Male')
+  
+  
+  fifty <- df %>%
+    filter(between(Age, 50, 59))
+  sixty <- df %>%
+    filter(between(Age, 60, 69))
+  seventy <- df %>%
+    filter(between(Age, 70, 79))
+  eighty <- df %>% 
+    filter(between(Age, 80, 90))
+  
+  fifty_DNMT3A <- fifty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+    fifty_DNMT3A$Mutation <- "DNMT3A"
+  sixty_DNMT3A <- sixty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+    sixty_DNMT3A$Mutation <- "DNMT3A"
+  seventy_DNMT3A <- seventy %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  seventy_DNMT3A$Mutation <- "DNMT3A"
+  eighty_DNMT3A <- eighty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  eighty_DNMT3A$Mutation <- "DNMT3A"
+  
+  
+
+  sixty_TET2 <- sixty %>%
+    filter(str_detect(Mutation, 'TET2'))
+    sixty_TET2$Mutation <- "TET2"
+  seventy_TET2 <- seventy %>%
+    filter(str_detect(Mutation, 'TET2'))
+  seventy_TET2$Mutation <- "TET2"
+  eighty_TET2 <- eighty %>%
+    filter(str_detect(Mutation, 'TET2'))
+  eighty_TET2$Mutation <- "TET2"
+  
+    fifty_ND <- fifty %>%
+      filter(str_detect(Mutation, 'ND'))
+    sixty_ND <- sixty %>%
+      filter(str_detect(Mutation, 'ND'))
+    seventy_ND <- seventy %>%
+      filter(str_detect(Mutation, 'ND'))
+    eighty_ND <- eighty %>%
+      filter(str_detect(Mutation, 'ND'))
+  
+  fifty_DNMT3A_mean <- mean(fifty_DNMT3A$Prop)
+  sixty_DNMT3A_mean <- mean(sixty_DNMT3A$Prop)
+  seventy_DNMT3A_mean <- mean(seventy_DNMT3A$Prop)
+  eighty_DNMT3A_mean <- mean(eighty_DNMT3A$Prop)
+  
+
+  sixty_TET2_mean <- mean(sixty_TET2$Prop)
+  seventy_TET2_mean <- mean(seventy_TET2$Prop)
+  eighty_TET2_mean <- mean(eighty_TET2$Prop)
+  
+  fifty_ND_mean <- mean(fifty_ND$Prop)
+  sixty_ND_mean <- mean(sixty_ND$Prop)
+  seventy_ND_mean <- mean(seventy_ND$Prop)
+  eighty_ND_mean <- mean(eighty_ND$Prop)
+  
+  
+  e <- c(i, unique(df$Sex),fifty_DNMT3A_mean, fifty_ND_mean,
+         sixty_DNMT3A_mean,sixty_TET2_mean, sixty_ND_mean,
+         seventy_DNMT3A_mean,seventy_TET2_mean, seventy_ND_mean,
+         eighty_DNMT3A_mean,eighty_TET2_mean, eighty_ND_mean)
+  
+  df_output <- rbind(df_output,e)
+}
+
+
+write_xlsx(as.data.frame(df_output), paste0(file_save, "/heatmap_age.xlsx"))
+```
+
+
+
+
+
+
+```{r}
+df_output <- NULL
+for (i in all_var){
+  df <- get(i)
+  df <- df %>%
+    filter (type %in% c("pbmcs_baseline", 'pbmcs_12m'))%>%
+    filter(Sex == 'Male')
+  
+  
+  loCH <- df %>%
+    filter(Condition == 'loCH')
+  CH <- df %>%
+    filter(Condition == 'CH')
+  hiVAF <- df %>%
+    filter(Condition == 'hiVAFCHIP')
+  loVAF <- df %>% 
+    filter(Condition == 'loVAFCHIP')
+  ND <- df %>% 
+    filter(Condition == 'ND')
+  
+  
+  
+  loCH_DNMT3A <- loCH %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+    loCH_DNMT3A$Mutation <- "DNMT3A"
+  CH_DNMT3A <- CH %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+    CH_DNMT3A$Mutation <- "DNMT3A"
+  hiVAF_DNMT3A <- hiVAF %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  hiVAF_DNMT3A$Mutation <- "DNMT3A"
+  loVAF_DNMT3A <- loVAF %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  loVAF_DNMT3A$Mutation <- "DNMT3A"
+  
+  
+
+  loCH_TET2 <- loCH %>%
+    filter(str_detect(Mutation, 'TET2'))
+    loCH_TET2$Mutation <- "TET2"
+  CH_TET2 <- CH %>%
+    filter(str_detect(Mutation, 'TET2'))
+    CH_TET2$Mutation <- "TET2"
+  hiVAF_TET2 <- hiVAF %>%
+    filter(str_detect(Mutation, 'TET2'))
+  hiVAF_TET2$Mutation <- "TET2"
+  loVAF_TET2 <- loVAF %>%
+    filter(str_detect(Mutation, 'TET2'))
+  loVAF_TET2$Mutation <- "TET2"
+  
+
+  
+  CH_DNMT3A_mean <- mean(CH_DNMT3A$Prop)
+  loCH_DNMT3A_mean <- mean(loCH_DNMT3A$Prop)
+  hiVAF_DNMT3A_mean <- mean(hiVAF_DNMT3A$Prop)
+  loVAF_DNMT3A_mean <- mean(loVAF_DNMT3A$Prop)
+  
+
+  CH_TET2_mean <- mean(CH_TET2$Prop)
+  loCH_TET2_mean <- mean(loCH_TET2$Prop)
+  hiVAF_TET2_mean <- mean(hiVAF_TET2$Prop)
+  loVAF_TET2_mean <- mean(loVAF_TET2$Prop)
+  
+  
+  ND_mean <- mean(ND$Prop)
+
+  
+  
+  e <- c(i, unique(df$Sex),CH_DNMT3A_mean,loCH_DNMT3A_mean,hiVAF_DNMT3A_mean,loVAF_DNMT3A_mean,
+         CH_TET2_mean,loCH_TET2_mean,hiVAF_TET2_mean,loVAF_TET2_mean,
+         ND_mean)
+  
+  df_output <- rbind(df_output,e)
+}
+
+
+write_xlsx(as.data.frame(df_output), paste0(file_save, "/heatmap_condition.xlsx"))
+```
+
+
+
+
+```{r}
+with_annotation_new$cluster <- as.factor(with_annotation_new$cluster)
+
+
+ggplot(with_annotation_new, aes(x = UMAP1, y = UMAP2)) +
+  geom_point(size = 0.0001, aes(colour = cluster)) +
+  guides(colour = guide_legend(override.aes = list(size = 3))) +
+  theme(legend.text = element_text(size = 7))
+
+
+
+```
+
+
+
+
+
+
+```{r}
+all_var <- ls()
+file_save <- 'C://Users/Yifei Wang/Desktop/analysis data/bm PbmCs seperated/'
+for (i in all_var) {
+  df <- get(i) 
+  
+  df <- df %>% 
+    filter (type == 'bm_baseline') %>%
+    filter (Sex == 'Male')
+  df1 <- df %>%
+    filter (Mutation == 'ND' )
+  df2 <- df %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  
+  df2$Mutation <- 'DNMT3A'
+  
+  df <- rbind(df1,df2)
+  
+  lm_results <- df %>%
+    group_by(Mutation) %>%
+    summarize(
+      model = list(lm(Prop ~ Age, data = cur_data())), 
+      equation = paste0("y = ", round(coef(model[[1]])[1], 3), " + ", round(coef(model[[1]])[2], 3), "x"),
+      p_value = tidy(model[[1]])$p.value[2])
+
+  label_data <- lm_results %>%
+    mutate(label = paste0(Mutation, ": ", equation, "\n p = ", round(p_value, 4)))
+
+  p <- ggplot(df, aes(x = Age, y = Prop, color = Mutation)) +
+  geom_point(alpha = 0.7) + 
+  geom_smooth(method = "lm", se = FALSE) +  
+  theme_bw() + 
+  theme(legend.position = "right") +  
+  labs(x = "Age", y = paste0("%",i), title = paste0("bm ", i)) + 
+  geom_text(data = label_data, aes(x = Inf, y = Inf, label = label, color = Mutation),
+            hjust = 1.1, vjust = c(1.1, 2.2), size = 4, show.legend = FALSE) +
+  scale_color_manual(values = c("DNMT3A" = "darkturquoise", "ND" = "lightcoral"))
+  
+  ggsave(paste0(i,'_linear_regression.png'),plot = p, path = file_save)
+}
+  
+```
+
+```{r}
+all_var <- ls()
+file_save <- "C://Users/Yifei Wang/Desktop/analysis data/BM PBMCs seperated/condition and mutation and age/"
+
+
+for (i in all_var){
+  a <- get(i)
+  a <- a %>% 
+    filter (type == 'bm_baseline') %>%
+    filter (Sex == 'Male')
+
+  sixty <- a %>%
+    filter(between(Age, 60, 69))
+  seventy <- a %>%
+    filter(between(Age, 70, 79))
+  eighty <- a %>% 
+    filter(between(Age, 80, 90))
+ 
+  sixty$Age <- "60-69"
+  seventy$Age <- "70-79"
+  eighty$Age <- '80-90'
+  
+
+  sixty_DNMT3A <- sixty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+    sixty_DNMT3A$Mutation <- "DNMT3A"
+  seventy_DNMT3A <- seventy %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  seventy_DNMT3A$Mutation <- "DNMT3A"
+  eighty_DNMT3A <- eighty %>%
+    filter(str_detect(Mutation, 'DNMT3A'))
+  eighty_DNMT3A$Mutation <- "DNMT3A"
+  
+  
+
+  sixty_TET2 <- sixty %>%
+    filter(str_detect(Mutation, 'TET2'))
+    sixty_TET2$Mutation <- "TET2"
+  seventy_TET2 <- seventy %>%
+    filter(str_detect(Mutation, 'TET2'))
+  seventy_TET2$Mutation <- "TET2"
+  eighty_TET2 <- eighty %>%
+    filter(str_detect(Mutation, 'TET2'))
+  eighty_TET2$Mutation <- "TET2"
+  
+  
+
+    sixty_ND <- sixty %>%
+      filter(str_detect(Mutation, 'ND'))
+    seventy_ND <- seventy %>%
+      filter(str_detect(Mutation, 'ND'))
+    eighty_ND <- eighty %>%
+      filter(str_detect(Mutation, 'ND'))
+  
+  e <- rbind( sixty_DNMT3A, seventy_DNMT3A, eighty_DNMT3A, sixty_TET2, seventy_TET2, eighty_TET2, sixty_ND, seventy_ND,eighty_ND)
+  
+    stat.test <- e %>%
+    group_by(Age) %>%
+    t_test(Prop ~ Mutation) %>%
+    adjust_pvalue() %>%
+    add_significance("p")
+    
+        stat.test <- stat.test %>% 
+      add_xy_position(x = 'Mutation')
+
+    p <- ggboxplot(e, x = 'Mutation', y = 'Prop', fill = 'Age', facet.by = 'Age') +
+      stat_pvalue_manual(stat.test, label = "p") +
+      scale_y_continuous(expand = expansion(mult = c(0.05, 0.10))) +
+      ylab(paste0('%', i)) +
+      geom_point()
+    
+    ggsave(paste0(file_save, '/', i, '_DNMT3A_mutation.png'), plot = p)
+
+} 
+
+
+```
